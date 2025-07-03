@@ -46,6 +46,7 @@ export function initGUILayer(renderer, scene, parameters, onChange, onThicknessC
   return {
     gui,
     guiLayer,
+    guiGroup,
     update: () => {
       // optional update logic if needed
     }

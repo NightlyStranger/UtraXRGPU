@@ -27,10 +27,10 @@ const horseRadius = 600;
 
 let guiScene = null;
 let guiCamera = null;
-let guiGroup = null;
+//let guiGroup = null;
 
 let horseLayer = null;
-let guiLayer = null;
+//let guiLayer = null;
 
 const parameters = {
     radius: 0.6,
@@ -122,6 +122,7 @@ function init() {
 
             }
 
+            /*
             if ( intersections[ x ].object == guiLayer ) {
 
                 const uv = intersections[ x ].uv;
@@ -129,6 +130,7 @@ function init() {
                 hadSelection = true;
 
             }
+            */
 
         }
 
@@ -139,7 +141,7 @@ function init() {
     function onSelectEnd( ) {
 
         horseLayer.visible = true;
-        guiGroup.children[ 0 ].dispatchEvent( { type: 'mouseup', data: { x: 0, y: 0 }, target: guiGroup } );
+        //guiGroup.children[ 0 ].dispatchEvent( { type: 'mouseup', data: { x: 0, y: 0 }, target: guiGroup } );
         this.userData.isSelecting = false;
 
     }
@@ -193,7 +195,7 @@ function init() {
     controllerGrip2.add( controllerModelFactory.createControllerModel( controllerGrip2 ) );
     scene.add( controllerGrip2 );
 
-    //
+    //  
 
     window.addEventListener( 'resize', onWindowResize );
 
@@ -201,11 +203,9 @@ function init() {
 
     // set up horse animation
     const { modelLayer } = initModelLayer(renderer, scene, {
-        modelFolder: 'meshes',
+        modelUrl: 'meshes/Frame01/MeshesZ0.obj',
         position: new THREE.Vector3(-1.5, 1.5, -1.5),
         layerSize: { width: 3, height: 2 },
-        frameCount: 4,
-        frameDuration: 1000,
         onLoad: (model) => {
             console.log('Model loaded:', model);
         }
@@ -289,13 +289,14 @@ function handleController( controller ) {
 
     const intersections = getIntersections( controller );
     for ( let x = 0; x < intersections.length; x ++ ) {
-
+        /*
         if ( intersections[ x ].object == guiLayer ) {
 
             const uv = intersections[ x ].uv;
             guiGroup.children[ 0 ].dispatchEvent( { type: 'mousemove', data: { x: uv.x, y: 1 - uv.y }, target: guiGroup } );
 
         }
+        */
 
 
     }
