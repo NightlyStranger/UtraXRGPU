@@ -25,6 +25,13 @@ let horseTheta = 0;
 let horseMesh = null;
 const horseRadius = 600;
 
+//clipping camera setting
+let clippingCamera = null;
+let clippingWorldPlane = null;
+let clippingViewPlane = null;
+
+let volMesh = null;
+
 let guiScene = null;
 let guiCamera = null;
 //let guiGroup = null;
@@ -202,7 +209,7 @@ function init() {
     
 
     // set up horse animation
-    const { modelLayer } = initModelLayer(renderer, scene, {
+    const { modelLayer, modelScene, modelCamera, worldPlane, viewPlane } = initModelLayer(renderer, scene, {
         modelUrl: 'meshes/Frame01/MeshesZ0.obj',
         position: new THREE.Vector3(-1.5, 1.5, -1.5),
         layerSize: { width: 3, height: 2 },
@@ -210,6 +217,9 @@ function init() {
             console.log('Model loaded:', model);
         }
     });
+    clippingCamera = modelCamera;
+    clippingWorldPlane = worldPlane;
+    clippingViewPlane = viewPlane;
 
     function onChange() { }
 
@@ -312,6 +322,27 @@ function render() {
 
     handleController( controller1 );
     handleController( controller2 );
+    console.log(volMesh);
+    if( clippingCamera != null && clippingViewPlane != null && clippingWorldPlane != null){
+            //updatePlaneToViewSpace(clippingWorldPlane, clippingViewPlane, clippingCamera);
+    }
     renderer.render( scene, camera );
 
+}
+function updatePlaneToViewSpace(worldPlane, viewPlane, camera) {
+  const timeSec = performance.now() * 0.001; // Convert milliseconds to seconds
+  const sineFluctuation = Math.sin(timeSec * 2 * Math.PI * 0.2) * 2.0; // frequency 0.2Hz, amplitude 2.0
+
+  const viewMatrix = camera.matrixWorldInverse;
+  const normalMatrix = new THREE.Matrix3().getNormalMatrix(viewMatrix);
+  
+  const worldNormal = worldPlane.normal.clone().applyMatrix3(normalMatrix).normalize();
+  const worldPoint = worldPlane.coplanarPoint(new THREE.Vector3());
+  const viewPoint = worldPoint.applyMatrix4(viewMatrix);
+  //worldPlane.constant += sineFluctuation;
+  
+  //viewPlane.setFromNormalAndCoplanarPoint(worldNormal, viewPoint);
+  console.log("World", worldPlane.normal, worldPlane.constant);
+  console.log("Vie2", viewPlane.normal, viewPlane.constant);
+  console.log("1");
 }
