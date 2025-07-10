@@ -436,7 +436,7 @@ export function initModelLayer(renderer, scene, {
         texture.needsUpdate = true;
 
         const opaqueRaymarchingTexture = Fn(({ texture, steps, threshold }) => {
-            const finalColor = vec4(0).toVar();
+            const finalColor = vec4(1, 0, 0, 1).toVar();
             RaymarchingBox(steps, ({ positionRay }) => {
                 const mapValue = texture.sample(positionRay.add(0.5)).r.toVar();
                 If(mapValue.greaterThan(threshold), () => {
