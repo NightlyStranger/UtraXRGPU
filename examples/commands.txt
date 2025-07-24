@@ -1,0 +1,10 @@
+cd C:\Users\schoo\Documents\GitHub\UtraXRGPU
+python -m http.server
+Ctrl+F5 - hard refresh
+
+ngrok
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+cd C:\Users\schoo\Documents\GitHub\UtraXRGPU
+.\run_ngrok.ps1
+
+ngrok http 3000

@@ -6,6 +6,9 @@ import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFa
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { initGUILayer } from './initGUILayer.js';
 import { initModelLayer } from './initModelLayer.js';
+import { TextureHelper } from 'three/addons/helpers/TextureHelperGPU.js';
+import { Break, If, vec3, vec4, texture3D, uniform, Fn, Continue, diffuseColor, attribute } from 'three/tsl';
+import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
 let camera, scene, renderer;
 let controller1, controller2;
@@ -29,8 +32,10 @@ const horseRadius = 600;
 let clippingCamera = null;
 let clippingWorldPlane = null;
 let clippingViewPlane = null;
+let helperVolume;
 
 let volMesh = null;
+
 
 let guiScene = null;
 let guiCamera = null;
@@ -49,6 +54,9 @@ const parameters = {
     thickness: 0.5,
     parhaha: 0.5
 };
+let sphere;
+const gui = new GUI();
+let globalControls;
 
 init();
 
@@ -79,6 +87,21 @@ function init() {
     );
     room.geometry.translate( 0, 3, 0 );
     scene.add( room );
+
+    const sphereGeometry = new THREE.SphereGeometry(0.2, 32, 32);
+    const sphereMaterial = new THREE.MeshStandardMaterial({ color: 'red' });
+    sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    sphere.position.set(0.5, 1.0, -0.5);
+    scene.add(sphere);
+
+    const sphereFolder = gui.addFolder('Sphere Position');
+
+    sphereFolder.add(sphere.position, 'x', -10, 10, 0.01).name('X');
+    sphereFolder.add(sphere.position, 'y', -10, 10, 0.01).name('Y');
+    sphereFolder.add(sphere.position, 'z', -10, 10, 0.01).name('Z');
+
+    sphereFolder.open();
+
 
     scene.add( new THREE.HemisphereLight( 0x606060, 0x404040 ) );
 
@@ -121,13 +144,14 @@ function init() {
         let hadSelection = false;
 
         for ( let x = 0; x < intersections.length; x ++ ) {
-
+            /*
             if ( intersections[ x ].object == horseLayer ) {
 
                 horseLayer.visible = false;
                 hadSelection = true;
 
             }
+            */
 
             /*
             if ( intersections[ x ].object == guiLayer ) {
@@ -147,7 +171,7 @@ function init() {
 
     function onSelectEnd( ) {
 
-        horseLayer.visible = true;
+        //horseLayer.visible = true;
         //guiGroup.children[ 0 ].dispatchEvent( { type: 'mouseup', data: { x: 0, y: 0 }, target: guiGroup } );
         this.userData.isSelecting = false;
 
@@ -209,7 +233,7 @@ function init() {
     
 
     // set up horse animation
-    const { modelLayer, modelScene, modelCamera, worldPlane, viewPlane } = initModelLayer(renderer, scene, {
+    const { modelLayer, modelScene, modelCamera, worldPlane, viewPlane, helper3D, controls } = initModelLayer(renderer, scene, {
         modelUrl: 'meshes/Frame01/MeshesZ0.obj',
         position: new THREE.Vector3(-1.5, 1.5, -1.5),
         layerSize: { width: 3, height: 2 },
@@ -220,6 +244,8 @@ function init() {
     clippingCamera = modelCamera;
     clippingWorldPlane = worldPlane;
     clippingViewPlane = viewPlane;
+    helperVolume = helper3D;
+    globalControls = controls;
 
     function onChange() { }
 
@@ -233,16 +259,6 @@ function init() {
 }
 
 
-function renderQuad() {
-
-    horseTheta += 0.1;
-    horseCamera.position.x = horseRadius * Math.sin( THREE.MathUtils.degToRad( horseTheta ) );
-    horseCamera.position.z = horseRadius * Math.cos( THREE.MathUtils.degToRad( horseTheta ) );
-
-    horseCamera.lookAt( 0, 150, 0 );
-    renderer.render( horseScene, horseCamera );
-
-}
 
 
 
@@ -283,6 +299,7 @@ function onWindowResize() {
 
 function handleController( controller ) {
 
+    /*
     if ( controller.userData.isSelecting ) {
 
         const object = room.children[ count ++ ];
@@ -296,53 +313,124 @@ function handleController( controller ) {
         if ( count === room.children.length ) count = 0;
 
     }
+    
 
     const intersections = getIntersections( controller );
     for ( let x = 0; x < intersections.length; x ++ ) {
-        /*
+        
         if ( intersections[ x ].object == guiLayer ) {
 
             const uv = intersections[ x ].uv;
             guiGroup.children[ 0 ].dispatchEvent( { type: 'mousemove', data: { x: uv.x, y: 1 - uv.y }, target: guiGroup } );
 
         }
-        */
+        
 
 
     }
+    */
+
+    //===Sphere intersection
+
+    //
+    const controllerPos = controller.position.clone();
+
+    const spherePos = sphere.position;
+    const radius = 0.2;
+    const d1 = controllerPos.distanceTo(spherePos);
+    const d2 = controllerPos.distanceTo(spherePos);
+    // 🔺 Vector from sphere center to controller
+    const intersected = d1 < radius || d2 < radius;
+
+    if (intersected) {
+        // Inside or touching
+        sphere.material.color.set('green');
+
+        const offset = new THREE.Vector3().subVectors(controllerPos, sphereCenter);
+        const radius = offset.length(); // distance from center to controller
+
+        // Avoid division by zero
+        if (radius > 0) {
+            const theta = Math.atan2(offset.x, offset.z);       // horizontal angle
+            const phi = Math.acos(offset.y / radius);           // vertical angle
+
+            console.log("θ (azimuthal):", THREE.MathUtils.radToDeg(theta));
+            console.log("φ (polar):", THREE.MathUtils.radToDeg(phi));
+            if (controls != null) {
+                //controls.setAzimuthalAngle(theta);
+                //controls.setPolarAngle(phi);
+            }
+
+            controls.update();
+        }
+        //controls
+    } else {
+        // Outside
+        sphere.material.color.set('red');
+    }
+        
 
 
 }
 
 //
 
+let prevControllerPos = new THREE.Vector3();
+let hasPrev = false;
+
 function render() {
 
     renderer.xr.renderLayers( );
 
-    handleController( controller1 );
-    handleController( controller2 );
-    console.log(volMesh);
-    if( clippingCamera != null && clippingViewPlane != null && clippingWorldPlane != null){
-            //updatePlaneToViewSpace(clippingWorldPlane, clippingViewPlane, clippingCamera);
+   // Get current controller position
+   // Get current position of controller1 in world space
+    const currentPos = new THREE.Vector3();
+    controller1.getWorldPosition(currentPos);
+
+    if (hasPrev) {
+        const delta = new THREE.Vector3().subVectors(currentPos, prevControllerPos);
+
+        // Apply sensitivity scale
+        const sensitivity = 10.0;
+
+        if (globalControls) {
+            globalControls._rotateLeft(delta.x * sensitivity);
+            globalControls._rotateUp(delta.y * sensitivity);
+            globalControls.update();
+        }
     }
+
+    // Always update previous position
+    prevControllerPos.copy(currentPos);
+    hasPrev = true;
+
+    //==controllers handle
+    // === Handle A/B button presses on controller1 ===
+    const session = renderer.xr.getSession();
+    if (session) {
+        for (const source of session.inputSources) {
+            const gp = source.gamepad;
+            if (gp) {
+                const aPressed = gp.buttons[4]?.pressed;
+                const bPressed = gp.buttons[5]?.pressed;
+
+                if (aPressed) {
+                    console.log("🅰️ A button is pressed");
+                    sphere.material.color.set('blue');
+                    clippingWorldPlane.constant -= 0.01; // Decrease clipping plane
+                } else if (bPressed) {
+                    console.log("🅱️ B button is pressed");
+                    sphere.material.color.set('yellow');
+                    clippingWorldPlane.constant += 0.01; // Increase clipping plane
+                } else {
+                    sphere.material.color.set('red');
+                }
+            }
+        }
+    }
+
+    //handleController( controller1 );
+    //handleController( controller2 );
     renderer.render( scene, camera );
 
-}
-function updatePlaneToViewSpace(worldPlane, viewPlane, camera) {
-  const timeSec = performance.now() * 0.001; // Convert milliseconds to seconds
-  const sineFluctuation = Math.sin(timeSec * 2 * Math.PI * 0.2) * 2.0; // frequency 0.2Hz, amplitude 2.0
-
-  const viewMatrix = camera.matrixWorldInverse;
-  const normalMatrix = new THREE.Matrix3().getNormalMatrix(viewMatrix);
-  
-  const worldNormal = worldPlane.normal.clone().applyMatrix3(normalMatrix).normalize();
-  const worldPoint = worldPlane.coplanarPoint(new THREE.Vector3());
-  const viewPoint = worldPoint.applyMatrix4(viewMatrix);
-  //worldPlane.constant += sineFluctuation;
-  
-  //viewPlane.setFromNormalAndCoplanarPoint(worldNormal, viewPoint);
-  console.log("World", worldPlane.normal, worldPlane.constant);
-  console.log("Vie2", viewPlane.normal, viewPlane.constant);
-  console.log("1");
 }
