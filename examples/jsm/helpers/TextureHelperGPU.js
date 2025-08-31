@@ -32,7 +32,7 @@ class TextureHelper extends Mesh {
 	 * @param {number} [height=1] - The helper's height.
 	 * @param {number} [depth=1] - The helper's depth.
 	 */
-	constructor( texture, width = 1, height = 1, depth = 1 ) {
+	constructor( texture, width = 1, height = 1, depth = 1 , mode = 3) {
 
 		const material = new NodeMaterial();
 		material.side = DoubleSide;
@@ -67,7 +67,7 @@ class TextureHelper extends Mesh {
 
 		const geometry = texture.isCubeTexture
 			? createCubeGeometry( width, height, depth )
-			: createSliceGeometry( texture, width, height, depth );
+			: createSliceGeometry( texture, width, height, depth, mode );
 
 		super( geometry, material );
 
@@ -94,7 +94,7 @@ class TextureHelper extends Mesh {
 
 }
 
-function getImageCount( texture ) {
+function getImageDepth( texture ) {
 
 	if ( texture.isCubeTexture ) {
 
@@ -107,6 +107,50 @@ function getImageCount( texture ) {
 	} else if ( texture.isData3DTexture || texture.isCompressed3DTexture ) {
 
 		return texture.image.depth;
+
+	} else {
+
+		return 1;
+
+	}
+
+}
+
+function getImageHeight( texture ) {
+
+	if ( texture.isCubeTexture ) {
+
+		return 6;
+
+	} else if ( texture.isArrayTexture || texture.isDataArrayTexture || texture.isCompressedArrayTexture ) {
+
+		return texture.image.height;
+
+	} else if ( texture.isData3DTexture || texture.isCompressed3DTexture ) {
+
+		return texture.image.height;
+
+	} else {
+
+		return 1;
+
+	}
+
+}
+
+function getImageWidth( texture ) {
+
+	if ( texture.isCubeTexture ) {
+
+		return 6;
+
+	} else if ( texture.isArrayTexture || texture.isDataArrayTexture || texture.isCompressedArrayTexture ) {
+
+		return texture.image.width;
+
+	} else if ( texture.isData3DTexture || texture.isCompressed3DTexture ) {
+
+		return texture.image.width;
 
 	} else {
 
@@ -167,20 +211,77 @@ function createCubeGeometry( width, height, depth ) {
 
 }
 
-function createSliceGeometry( texture, width, height, depth ) {
+function createSliceGeometry( texture, width, height, depth, mode ) {
+	//additional rotations
+	mode = 3;
+	console.log("Mode of volume", mode);
+	let sliceCount;
+	if (mode === 1) {
+		sliceCount = getImageDepth(texture);  // Z slicing
+	} else if (mode === 2) {
+		sliceCount = getImageWidth(texture);  // X slicing
+	} else if (mode === 3) {
+		sliceCount = getImageHeight(texture); // Y slicing
+	}
+	//let sliceCount = getImageDepth( texture );
+	/*
 
-	const sliceCount = getImageCount( texture );
+	if (mode == 1)
+	{
+		sliceCount = getImageWidth( texture );
+	}
+	if (mode == 2)
+	{
+		sliceCount = getImageHeight( texture );
+	}
+	*/
 
 	const geometries = [];
 
 	for ( let i = 0; i < sliceCount; ++ i ) {
 
-		const geometry = new PlaneGeometry( width, height );
+		//let geometry = new PlaneGeometry( width, height );
+		/*
+		if (mode == 1)
+		{
+			geometry = new PlaneGeometry( width, depth );
+		}
+		if (mode == 2)
+		{
+			geometry = new PlaneGeometry( height, depth );
+		}*/
 
-		if ( sliceCount > 1 ) {
+		{
 
-			geometry.translate( 0, 0, depth * ( i / ( sliceCount - 1 ) - 0.5 ) );
+			/*
+			if (mode == 1)
+			{
+				console.log("it s one");
+				geometry.translate( 0, 0, depth * ( i / ( sliceCount - 1 ) - 0.5 ) );
+				geometry.rotateX( 3.14159 / 2.0 );
+			}
+			if (mode == 2)
+			{
+				console.log("it s two");
+				geometry.translate( 0, 0, depth * ( i / ( sliceCount - 1 ) - 0.5 ) );
+				geometry.rotateY( 3.14159 / 2.0 );
+			}*/
+				//console.log("it s three");
+			//geometry.translate( 0, 0, depth * ( i / ( sliceCount - 1 ) - 0.5 ) );
+		}
 
+		let geometry;
+		if (mode === 1) {
+			geometry = new PlaneGeometry(width, height);
+			geometry.translate(0, 0, depth * (i / (sliceCount - 1) - 0.5));
+		} else if (mode === 2) {
+			geometry = new PlaneGeometry(depth, height);
+			geometry.rotateY(Math.PI / 2);
+			geometry.translate(width * (i / (sliceCount - 1) - 0.5), 0, 0);
+		} else if (mode === 3) {
+			geometry = new PlaneGeometry(width, depth);
+			geometry.rotateX(-Math.PI / 2);
+			geometry.translate(0, height * (i / (sliceCount - 1) - 0.5), 0);
 		}
 
 		const uv = geometry.attributes.uv;
@@ -189,15 +290,26 @@ function createSliceGeometry( texture, width, height, depth ) {
 		for ( let j = 0, jl = uv.count; j < jl; ++ j ) {
 
 			const u = uv.getX( j );
-			const v = texture.flipY ? uv.getY( j ) : 1 - uv.getY( j );
+			const v = uv.getY( j );
 			const w = sliceCount === 1
 				? 1
 				: texture.isArrayTexture || texture.isDataArrayTexture || texture.isCompressedArrayTexture
 					? i
 					: i / ( sliceCount - 1 );
 
-			uvw.setXYZ( j, u, v, w );
-
+			{
+				if (mode === 1) {
+					// Default: slice along Z
+					uvw.setXYZ(j, u, v, w);
+				} else if (mode === 2) {
+					// Slice along X
+					uvw.setXYZ(j, w, u, v);
+				} else if (mode === 3) {
+					// Slice along Y
+					uvw.setXYZ(j, u, w, v);
+				}
+				//uvw.setXYZ( j, u, v, w );
+			}
 		}
 
 		geometry.deleteAttribute( 'uv' );

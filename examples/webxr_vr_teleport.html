@@ -239,28 +239,28 @@
 				marker.visible = INTERSECTION !== undefined;
 
 
-				const session = renderer.xr.getSession();
-				if (session) {
-					for (const source of session.inputSources) {
-						const gp = source.gamepad;
-						if (gp) {
-							const aPressed = gp.buttons[4]?.pressed;
-							const bPressed = gp.buttons[5]?.pressed;
+			const session = renderer.xr.getSession();
+			if (session) {
+				for (const source of session.inputSources) {
+					const gp = source.gamepad;
+					if (gp) {
+						const aPressed = gp.buttons[4]?.pressed;
+						const bPressed = gp.buttons[5]?.pressed;
 
-							if (aPressed) {
-								console.log("🅰️ A button is pressed");
-								//sphere.material.color.set('blue');
-								//clippingWorldPlane.constant -= 0.01; // Decrease clipping plane
-							} else if (bPressed) {
-								console.log("🅱️ B button is pressed");
-								//sphere.material.color.set('yellow');
-								//clippingWorldPlane.constant += 0.01; // Increase clipping plane
-							} else {
-								//sphere.material.color.set('red');
-							}
+						if (aPressed) {
+							console.log("🅰️ A button is pressed");
+							//sphere.material.color.set('blue');
+							//clippingWorldPlane.constant -= 0.01; // Decrease clipping plane
+						} else if (bPressed) {
+							console.log("🅱️ B button is pressed");
+							//sphere.material.color.set('yellow');
+							//clippingWorldPlane.constant += 0.01; // Increase clipping plane
+						} else {
+							//sphere.material.color.set('red');
 						}
 					}
 				}
+			}
 
 				renderer.render( scene, camera );
 

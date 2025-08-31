@@ -9,6 +9,9 @@ import { initModelLayer } from './initModelLayer.js';
 import { TextureHelper } from 'three/addons/helpers/TextureHelperGPU.js';
 import { Break, If, vec3, vec4, texture3D, uniform, Fn, Continue, diffuseColor, attribute } from 'three/tsl';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+import { loadFBX } from './fbxLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { SphericalPlaneControls } from './SphericalPlaneControls.js';
 
 let camera, scene, renderer;
 let controller1, controller2;
@@ -33,6 +36,7 @@ let clippingCamera = null;
 let clippingWorldPlane = null;
 let clippingViewPlane = null;
 let helperVolume;
+let sphereControls;
 
 let volMesh = null;
 
@@ -57,6 +61,7 @@ const parameters = {
 let sphere;
 const gui = new GUI();
 let globalControls;
+let offscreenLayer;
 
 init();
 
@@ -81,12 +86,32 @@ function init() {
     camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 10 );
     camera.position.set( 0, 1.6, 3 );
 
+    
+    
+
     room = new THREE.LineSegments(
         new BoxLineGeometry( 6, 6, 6, 10, 10, 10 ),
         new THREE.LineBasicMaterial( { color: 0x808080 } )
     );
     room.geometry.translate( 0, 3, 0 );
-    scene.add( room );
+    //scene.add( room );
+    //fbx room
+    async function initFBX() {
+        try {
+            const { object } = await loadFBX(
+                scene,
+                gui,
+                'meshes/fbx/ULTRASON   ünitesi.fbx'
+            );
+
+            console.log('FBX loaded:', object);
+
+        } catch (err) {
+            console.error('Error loading FBX:', err);
+        }
+    }
+
+    //initFBX();
 
     const sphereGeometry = new THREE.SphereGeometry(0.2, 32, 32);
     const sphereMaterial = new THREE.MeshStandardMaterial({ color: 'red' });
@@ -121,6 +146,10 @@ function init() {
     //
 
     document.body.appendChild( VRButton.createButton( renderer ) );
+
+    // ✅ OrbitControls
+    //const orbitControls = new OrbitControls(camera, renderer.domElement);
+    //orbitControls.update();
 
     // controllers
 
@@ -246,6 +275,37 @@ function init() {
     clippingViewPlane = viewPlane;
     helperVolume = helper3D;
     globalControls = controls;
+
+    /*sphereControls = new SphericalPlaneControls(worldPlane, {
+        center: new THREE.Vector3(0, 0, 0),
+        radius: 3,
+        speed: 0.03,
+        radiusStep: 0.1
+    });
+    */
+
+    offscreenLayer = modelLayer;
+    // Offscreen Layer Transform folder
+    const offscreenFolder = gui.addFolder("Offscreen Layer Transform");
+
+    // Position folder with unique names
+    const offscreenPosFolder = offscreenFolder.addFolder("Layer Translation (Offscreen)");
+    offscreenPosFolder.add(modelLayer.position, "x").name("Offscreen X").min(-5).max(5).step(0.1);
+    offscreenPosFolder.add(modelLayer.position, "y").name("Offscreen Y").min(-5).max(5).step(0.1);
+    offscreenPosFolder.add(modelLayer.position, "z").name("Offscreen Z").min(-5).max(5).step(0.1);
+
+    // Size folder with unique names
+    const offscreenSizeParams = {
+        offscreenWidth: modelLayer.scale.x,
+        offscreenHeight: modelLayer.scale.y
+    };
+    const offscreenSizeFolder = offscreenFolder.addFolder("Layer Dimensions (Offscreen)");
+    offscreenSizeFolder.add(offscreenSizeParams, "offscreenWidth").name("Width Scale").min(0.1).max(10).step(0.1).onChange(v => {
+        modelLayer.scale.x = v;
+    });
+    offscreenSizeFolder.add(offscreenSizeParams, "offscreenHeight").name("Height Scale").min(0.1).max(10).step(0.1).onChange(v => {
+        modelLayer.scale.y = v;
+    });
 
     function onChange() { }
 
@@ -431,6 +491,9 @@ function render() {
 
     //handleController( controller1 );
     //handleController( controller2 );
+    
+    //sphereControls.update();
+
     renderer.render( scene, camera );
 
 }
