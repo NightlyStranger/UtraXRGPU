@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
-import { Break, If, vec3, vec4, texture3D, uniform, Fn, Continue, diffuseColor, attribute, float, abs, sin, cos,
-    lessThan, mat3, mat4, mul, bool, sub, rotate} from 'three/tsl';
+import { Break, If, texture3D, uniform, Fn, cameraProjectionMatrix, 
+       modelViewMatrix,float, vec3, vec4,positionLocal, mul, cameraPosition, modelWorldMatrixInverse, Loop, max,
+       uniformArray} from 'three/tsl';
 import { RaymarchingBox } from 'three/addons/tsl/utils/Raymarching.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadFBX } from './fbxLoader.js';
@@ -41,10 +42,7 @@ export function initModelLayer(renderer, scene, {
 
 
     modelScene.background = new THREE.Color(backgroundColor);
-    //orthocamera
-    //threshold
     const modelCamera = new THREE.PerspectiveCamera(50, 1, 1, 10000);
-    //const cameraUniform = 
 
     modelCamera.position.set(0.0, 0.0, 3.0);
     const controls = new OrbitControls(modelCamera, renderer.domElement);
@@ -65,7 +63,140 @@ export function initModelLayer(renderer, scene, {
 
     // GUI
     const gui = new GUI({ width: 250 });
+
+    const renderingMode = uniform(0);
+    const threshold = uniform(0.4);
+    addRenderingModeGUIControl(renderingMode, gui);
+    addThresholdGUIControl(threshold, gui, "Iso Threshold", 0.0, 1.0, 0.01);
+
+    const rangesFolder = gui.addFolder('Ranges');
+    // ranges are stored as pairs [min, max]
+    // Initialize ranges: [min, max, color, opacity]
+    let ranges = [{ min: 0, max: 1, color: '#dc143c', opacity: 1.0 }];
+    const maxRanges = 5; // max number of ranges in shader
+    let sizeCounter = 1;
+    const rangeMins = new Float32Array(maxRanges);
+    const rangeMaxs = new Float32Array(maxRanges);
+    const rMapping = new Float32Array(maxRanges);
+    const gMapping = new Float32Array(maxRanges);
+    const colorsMapping = new Array(maxRanges).fill(null).map(() => {
+        const c = new THREE.Color();
+        c.set('#dc143c'); // crimson
+        return c;
+    });
+
+    const colorsMappingUniform = uniformArray(colorsMapping);
+    const rangesSizeUniform = uniform(sizeCounter);
+    for (let i = 0; i < maxRanges; i++) {
+        rangeMins[i] = 0.0;
+        rangeMaxs[i] = 1.0;
+    }
+    const rangeMinsUniform = uniformArray(rangeMins);
+    const rangeMaxesUniform = uniformArray(rangeMaxs);
+    const rangeColor = [];
+    const rangeOpacity = [];
     
+
+    // Keep references to controllers so we can destroy them on rebuild
+    let rangeControllers = [];
+
+    // show current ranges
+    function rebuildRangesGUI() {
+        // destroy old controllers
+        rangeControllers.forEach(c => c.destroy());
+        rangeControllers = [];
+
+        ranges.forEach((r, i) => {
+            const folder = rangesFolder.addFolder(`Range ${i + 1}`);
+            const labelObj = { range: `[${r.min.toFixed(3)}, ${r.max.toFixed(3)}]` };
+            const ctrl = folder.add(labelObj, 'range').name('Bounds');
+            ctrl.disable();
+            rangeControllers.push(ctrl);
+
+            // color picker
+            const colorCtrl = folder.addColor(r, 'color').name('Color');
+            rangeControllers.push(colorCtrl);
+            colorCtrl.onChange((hex) => {
+                // convert hex to THREE.Color and update your array
+                colorsMapping[i].set(hex); // i is the index of the current range
+            });
+
+            // opacity slider
+            const opacityCtrl = folder.add(r, 'opacity', 0, 1, 0.01).name('Opacity');
+            rangeControllers.push(opacityCtrl);
+
+            // delete button (if more than 1 range)
+            if (ranges.length > 1) {
+                const delObj = {
+                    remove: () => {
+                        if (i < ranges.length - 1) {
+                            // merge into next range
+                            ranges[i + 1].min = r.min;
+                        } else {
+                            // merge into previous if it was the last one
+                            ranges[i - 1].max = r.max;
+                        }
+                        ranges.splice(i, 1);
+                        rebuildRangesGUI();
+                        // cleanup extra folders
+                        for (let i = 0; i < maxRanges; i++) {
+                            if (i < ranges.length) {
+                                rangeMins[i] = ranges[i].min;
+                                rangeMaxs[i] = ranges[i].max;
+                            }
+                            sizeCounter--;
+                            rangesSizeUniform.value = sizeCounter;
+                        }
+                        while (rangesFolder.children.length > ranges.length) {
+                            rangesFolder.children[0].destroy();
+                        }
+                    }
+                };
+                rangeControllers.push(folder.add(delObj, 'remove').name('Delete'));
+            }
+        });
+    }
+
+    // split the range that contains `value` (0 < value < 1)
+    function splitAt(value) {
+        if (value <= 0 || value >= 1) return; // must be strictly inside (0,1)
+        for (let i = 0; i < ranges.length; i++) {
+            const r = ranges[i];
+            if (value > r.min && value < r.max) {
+                // replace the found range with two, copying color/opacity
+                const first = { min: r.min, max: value, color: r.color, opacity: r.opacity };
+                const second = { min: value, max: r.max, color: r.color, opacity: r.opacity };
+                ranges.splice(i, 1, first, second);
+                rebuildRangesGUI();
+                // return; // keep looping if needed
+            }
+        }
+        for (let i = 0; i < maxRanges; i++) {
+            if (i < ranges.length) {
+                    rangeMins[i] = ranges[i].min;
+                    rangeMaxs[i] = ranges[i].max;
+                }
+        }
+        sizeCounter++;
+        rangesSizeUniform.value = sizeCounter;
+        // cleanup extra folders
+        while (rangesFolder.children.length > ranges.length) {
+            rangesFolder.children[0].destroy();
+        }
+        console.log(rangeMins);
+        console.log(rangeMaxs);
+        console.log(sizeCounter);
+    }
+
+    // UI to choose split point and add
+    const params = { value: 0.5, add: () => splitAt(params.value) };
+    gui.add(params, 'value', 0, 1, 0.001).name('Split At');
+    gui.add(params, 'add').name('Add Range');
+
+    rebuildRangesGUI();
+    // --- create uniforms for shader ---
+    
+    console.log(rangeMaxs);
 
     function loadModel(modelUrl) {
         return new Promise((resolve, reject) => {
@@ -126,8 +257,8 @@ export function initModelLayer(renderer, scene, {
         
         const cameraBoolean = uniform(0);
 
+        
         addPlaneGUIControl(worldPlane, gui, modelCamera, controls, 'Local Clipping Plane', planeNormal, planeConstant);
-
         async function loadVolume(volumePathUrl) {
 
 
@@ -139,9 +270,6 @@ export function initModelLayer(renderer, scene, {
 
             const dimZ = volumeDimensions.z;
 
-
-            const threshold = uniform(0.4);
-            const steps = uniform(200);
             const response = await fetch(volumePathUrl);
 
             const buffer = await response.arrayBuffer();
@@ -191,11 +319,16 @@ export function initModelLayer(renderer, scene, {
 
             //const rotatedPlane = worldPlane; // copy original
             //rotatedPlane.normal.applyQuaternion(q);  // rotate normal
+            // Convert hex to THREE.Vector3 for RGB
+            function hexToVec3(hex) {
+                const c = new THREE.Color(hex);
+                return new THREE.Vector3(c.r, c.g, c.b);
+            }
 
             
+            const volumeMaterial = new THREE.NodeMaterial();
             
-            
-            const opaqueRaymarchingTexture = Fn(({ texture, steps, threshold}) => {
+            const opaqueRaymarchingTexture = Fn(({ texture, steps}) => {
                 //const planeNormal = uniform(vec3(), "planeNormal");
                 //const planeConstant = uniform(0, "planeConstant");
                 let finalColor = vec4().toVar();;
@@ -214,117 +347,109 @@ export function initModelLayer(renderer, scene, {
 
                 });
 
-
-
+                // DVR accumulators
+                let accumColor = vec3(0.0).toVar();
+                let accumAlpha = float(0.0).toVar();
+                const one = float(1.0);
+                
+                //MIP accumulators
+                let accum = float(0.3).toVar();
+                let opacity = float(0.0).toVar();
                 RaymarchingBox(steps, ({ positionRay }) => {
 
-                    let transformedPos = positionRay; // move origin to center of box
-                    //transformedPos = rotate(transformedPos, vec3(0, 0, Math.PI / 2));
-                    transformedPos = transformedPos.add(0.5); // move back
+                    let transformedPos = positionRay;
+                    transformedPos = transformedPos.add(0.5);
                     const mapValue = texture.sample(transformedPos).r.toVar();
-
                     const clip = clipByPlane({
-                        point: positionRay, // or your worldPos if you have it
+                        point: positionRay,
                         n: planeNormal,
                         c: planeConstant
                     });
-
-
-                    If(mapValue.greaterThan(threshold).and(clip.not()), () => {
-
+                    If(renderingMode.equal(0), () => {
+                        If(mapValue.greaterThan(threshold).and(clip.not()), () => {
+                            const p = vec3(positionRay).add(0.5);
+                            //finalColor.assign(colorsMappingUniform.element(2));
+                            //finalColor.r.assign(texture.normal(p).mul(0.5).add(positionRay.mul(1.5).add(0.25)));
+                            Loop( rangesSizeUniform, ( { i } ) => {
+                                const minVal = rangeMinsUniform.element(i);
+                                const maxVal = rangeMaxesUniform.element(i);
+                                If(mapValue.greaterThanEqual(minVal).and(mapValue.lessThan(maxVal)), () => {
+                                    finalColor.assign(colorsMappingUniform.element(i));
+                                }); 
+                            } );
+                            finalColor.a.assign(1)
+                            Break();
+                        });
                         
-                        const p = vec3(positionRay).add(0.5);
 
+                    })
+                    .ElseIf(renderingMode.equal(1), () => {
+                        If(mapValue.lessThan(1.0).and(clip.not().and(mapValue.greaterThan(0.05))), () => {                        
+                            const p = vec3(positionRay).add(0.5);
+                            accum.assign(max(accum, mapValue));
+                        });
 
-                        finalColor.rgb.assign(texture.normal(p).mul(0.5).add(positionRay.mul(1.5).add(0.25)));
+                    })
+                    .Else(() => {
+                        If(clip.not(), () => {
+                            const sampleColor = vec3(mapValue, 0, 0);
+                            const sampleAlpha = mapValue;
+                            const oneMinusAlpha = one.sub(accumAlpha);
 
+                            // front-to-back compositing
+                            accumColor.assign(accumColor.add(sampleColor.mul(sampleAlpha).mul(oneMinusAlpha)));
+                            accumAlpha.assign(accumAlpha.add(sampleAlpha.mul(oneMinusAlpha)));
 
-                        finalColor.a.assign(1);
-                        
-                       // Map value to intensity between 0.2–1.0
-                        // Shades of red (crimson-like)
-                        /*
-                        finalColor.rgb.assign(vec3(
-                            mapValue,                  // red intensity from value
-                            0,         // a little green for crimson tint
-                            0         // a little blue for crimson tint
-                        ));
-
-                        // Opacity follows intensity
-                        finalColor.a.assign(1);
-                        */
-
-
-                        Break();
-
+                            // early exit if almost opaque
+                            If(accumAlpha.greaterThan(0.95), () => { Break(); });
+                        });
 
                     });
+                    
 
 
                 });
 
+                If((renderingMode.equal(0)), ()=> {
+                    
+                });
 
+                
+                If(accum.greaterThan(threshold).and(renderingMode.equal(1)), ()=> {
+                    opacity.assign(1.0);
+                    finalColor.r.assign(accum);
+                    finalColor.a.assign(opacity);
+                });
+                If((renderingMode.equal(2)), ()=> {
+                    finalColor.r.assign(accumColor);
+                    finalColor.a.assign(accumAlpha);
+                });
+
+                
                 return finalColor;
 
 
             });
-
-
-
-
-
-            const volumeMaterial = new THREE.NodeMaterial();
-
+            
             volumeMaterial.colorNode = opaqueRaymarchingTexture({
-
-
                 texture: texture3D(texture, null, 0),
-
-
-                steps,
-
-
-                threshold
-
-
-
+                steps: 128
             });
-
-
+            
             volumeMaterial.side = THREE.BackSide;
-
-
             volumeMaterial.transparent = true;
-
-
             volumeMaterial.alphaToCoverage = true;
-
-
-
-
-
-
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), volumeMaterial);
-
-
             mesh.position.set(0, 0, 0);
             const initialRotationDeg = { x: 0, y: 0, z: 90 };
-
-
             mesh.rotation.set(
-
-
                 THREE.MathUtils.degToRad(initialRotationDeg.x),
-
-
                 THREE.MathUtils.degToRad(initialRotationDeg.y),
-
-
                 THREE.MathUtils.degToRad(initialRotationDeg.z)
-
-
             );
             globalVolumeMesh = mesh;
+
+            
             updatePlaneForMesh(mesh, worldPlane, planeNormal, planeConstant);
             
 
@@ -413,7 +538,7 @@ export function initModelLayer(renderer, scene, {
             models.forEach(model => {
                 model.visible = false;
                 //modelScene.add(model);
-                knotClippingGroup.add(model);
+                //knotClippingGroup.add(model);
             });
         });
         // In your render/animation loop
@@ -777,4 +902,34 @@ function updatePlaneForMesh(mesh, worldPlane, planeNormal, planeConstant) {
   // --- 5. push into uniforms ---
   planeNormal.value = localNormal;
   planeConstant.value = localConstant;
+}
+
+function addRenderingModeGUIControl(renderingMode, gui, name = 'Rendering Mode') {
+    const folder = gui.addFolder(name);
+
+    const params = {
+        mode: renderingMode.value, // initial value
+    };
+
+    // Add a dropdown or slider with discrete options: 0 = Iso, 1 = MIP, 2 = DVR
+    folder.add(params, 'mode', { Iso: 0, MIP: 1, DVR: 2 }).name('Mode').onChange((val) => {
+        renderingMode.value = val; // update the uniform
+        console.log("Rendering Mode set to", val);
+    });
+
+    folder.open();
+}
+function addThresholdGUIControl(thresholdUniform, gui, name = 'Threshold', min = 0.0, max = 1.0, step = 0.01) {
+    const folder = gui.addFolder(name);
+
+    const params = {
+        threshold: thresholdUniform.value, // initial value
+    };
+
+    folder.add(params, 'threshold', min, max, step).name('Threshold').onChange((val) => {
+        thresholdUniform.value = val; // update the uniform
+        console.log("Threshold set to", val);
+    });
+
+    folder.open();
 }

@@ -10,6 +10,7 @@ import { TextureHelper } from 'three/addons/helpers/TextureHelperGPU.js';
 import { Break, If, vec3, vec4, texture3D, uniform, Fn, Continue, diffuseColor, attribute } from 'three/tsl';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import { loadFBX } from './fbxLoader.js';
+import {createGreenBox } from './dvrRendring.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SphericalPlaneControls } from './SphericalPlaneControls.js';
 
@@ -117,7 +118,7 @@ function init() {
     const sphereMaterial = new THREE.MeshStandardMaterial({ color: 'red' });
     sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
     sphere.position.set(0.5, 1.0, -0.5);
-    scene.add(sphere);
+    //scene.add(sphere);
 
     const sphereFolder = gui.addFolder('Sphere Position');
 
@@ -144,6 +145,8 @@ function init() {
     document.body.appendChild( renderer.domElement );
 
     //
+
+    createGreenBox(renderer, scene, camera);
 
     document.body.appendChild( VRButton.createButton( renderer ) );
 
@@ -286,6 +289,7 @@ function init() {
 
     offscreenLayer = modelLayer;
     // Offscreen Layer Transform folder
+    /*
     const offscreenFolder = gui.addFolder("Offscreen Layer Transform");
 
     // Position folder with unique names
@@ -306,6 +310,7 @@ function init() {
     offscreenSizeFolder.add(offscreenSizeParams, "offscreenHeight").name("Height Scale").min(0.1).max(10).step(0.1).onChange(v => {
         modelLayer.scale.y = v;
     });
+    */
 
     function onChange() { }
 

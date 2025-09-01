@@ -59,11 +59,14 @@ export const RaymarchingBox = ( steps, callback ) => {
 
 	const positionRay = vec3( vOrigin.add( bounds.x.mul( rayDir ) ) ).toVar();
 
+	const accum = vec3(1.0).toVar();
+
 	Loop( { type: 'float', start: bounds.x, end: bounds.y, update: delta }, () => {
 
-		callback( { positionRay } );
+		callback( { positionRay} );
 
 		positionRay.addAssign( rayDir.mul( delta ) );
+		//accum.assign(1.0, 0, 0);
 
 	} );
 
