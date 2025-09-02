@@ -84,7 +84,8 @@ export function initModelLayer(renderer, scene, {
         c.set('#dc143c'); // crimson
         return c;
     });
-
+    const opacityMapping = new Array(maxRanges).fill(1.0);
+    const opacityMappingUniform = uniformArray(opacityMapping);
     const colorsMappingUniform = uniformArray(colorsMapping);
     const rangesSizeUniform = uniform(sizeCounter);
     for (let i = 0; i < maxRanges; i++) {
@@ -93,16 +94,10 @@ export function initModelLayer(renderer, scene, {
     }
     const rangeMinsUniform = uniformArray(rangeMins);
     const rangeMaxesUniform = uniformArray(rangeMaxs);
-    const rangeColor = [];
-    const rangeOpacity = [];
     
-
-    // Keep references to controllers so we can destroy them on rebuild
     let rangeControllers = [];
-
     // show current ranges
     function rebuildRangesGUI() {
-        // destroy old controllers
         rangeControllers.forEach(c => c.destroy());
         rangeControllers = [];
 
@@ -117,36 +112,33 @@ export function initModelLayer(renderer, scene, {
             const colorCtrl = folder.addColor(r, 'color').name('Color');
             rangeControllers.push(colorCtrl);
             colorCtrl.onChange((hex) => {
-                // convert hex to THREE.Color and update your array
-                colorsMapping[i].set(hex); // i is the index of the current range
+                colorsMapping[i].set(hex);
             });
 
             // opacity slider
             const opacityCtrl = folder.add(r, 'opacity', 0, 1, 0.01).name('Opacity');
+            opacityCtrl.onChange(value => {
+                opacityMapping[i] = value;
+            });
             rangeControllers.push(opacityCtrl);
-
-            // delete button (if more than 1 range)
             if (ranges.length > 1) {
                 const delObj = {
                     remove: () => {
                         if (i < ranges.length - 1) {
-                            // merge into next range
                             ranges[i + 1].min = r.min;
                         } else {
-                            // merge into previous if it was the last one
                             ranges[i - 1].max = r.max;
                         }
                         ranges.splice(i, 1);
                         rebuildRangesGUI();
-                        // cleanup extra folders
                         for (let i = 0; i < maxRanges; i++) {
                             if (i < ranges.length) {
                                 rangeMins[i] = ranges[i].min;
                                 rangeMaxs[i] = ranges[i].max;
                             }
-                            sizeCounter--;
-                            rangesSizeUniform.value = sizeCounter;
                         }
+                        sizeCounter--;
+                        rangesSizeUniform.value = sizeCounter;
                         while (rangesFolder.children.length > ranges.length) {
                             rangesFolder.children[0].destroy();
                         }
@@ -157,18 +149,15 @@ export function initModelLayer(renderer, scene, {
         });
     }
 
-    // split the range that contains `value` (0 < value < 1)
     function splitAt(value) {
-        if (value <= 0 || value >= 1) return; // must be strictly inside (0,1)
+        if (value <= 0 || value >= 1) return;
         for (let i = 0; i < ranges.length; i++) {
             const r = ranges[i];
             if (value > r.min && value < r.max) {
-                // replace the found range with two, copying color/opacity
                 const first = { min: r.min, max: value, color: r.color, opacity: r.opacity };
                 const second = { min: value, max: r.max, color: r.color, opacity: r.opacity };
                 ranges.splice(i, 1, first, second);
                 rebuildRangesGUI();
-                // return; // keep looping if needed
             }
         }
         for (let i = 0; i < maxRanges; i++) {
@@ -183,9 +172,6 @@ export function initModelLayer(renderer, scene, {
         while (rangesFolder.children.length > ranges.length) {
             rangesFolder.children[0].destroy();
         }
-        console.log(rangeMins);
-        console.log(rangeMaxs);
-        console.log(sizeCounter);
     }
 
     // UI to choose split point and add
@@ -194,9 +180,6 @@ export function initModelLayer(renderer, scene, {
     gui.add(params, 'add').name('Add Range');
 
     rebuildRangesGUI();
-    // --- create uniforms for shader ---
-    
-    console.log(rangeMaxs);
 
     function loadModel(modelUrl) {
         return new Promise((resolve, reject) => {
@@ -246,98 +229,43 @@ export function initModelLayer(renderer, scene, {
             );
         });
         }
-        const size = {
-            width: 240,
-            height: 299,
-            depth: 282
-		};
-
         const planeNormal = uniform(worldPlane.normal);
         const planeConstant = uniform(worldPlane.constant);
-        
-        const cameraBoolean = uniform(0);
 
-        
         addPlaneGUIControl(worldPlane, gui, modelCamera, controls, 'Local Clipping Plane', planeNormal, planeConstant);
         async function loadVolume(volumePathUrl) {
-
-
             const dimX = volumeDimensions.x;
-
-
             const dimY = volumeDimensions.y;
-
-
             const dimZ = volumeDimensions.z;
-
             const response = await fetch(volumePathUrl);
-
             const buffer = await response.arrayBuffer();
-
             const expectedSize = dimX * dimY * dimZ;
-
-
             const byteArray = new Uint8Array(buffer);
 
-
             if (byteArray.length !== expectedSize) {
-
-
                 console.warn(`Expected ${expectedSize} bytes, got ${byteArray.length}`);
-
-
             }
 
-
-
-
-
             const texture = new THREE.Data3DTexture(byteArray, dimX, dimY, dimZ);
-
-
             texture.format = THREE.RedFormat;
-
-
             texture.type = THREE.UnsignedByteType;
-
-
             texture.minFilter = THREE.LinearFilter;
-
-
             texture.magFilter = THREE.LinearFilter;
-
-
             texture.unpackAlignment = 1;
-
-
             texture.needsUpdate = true;
-
-
 
             const q = new THREE.Quaternion();
             q.setFromEuler(new THREE.Euler(0, 0, Math.PI / 2));
-
-            //const rotatedPlane = worldPlane; // copy original
-            //rotatedPlane.normal.applyQuaternion(q);  // rotate normal
-            // Convert hex to THREE.Vector3 for RGB
             function hexToVec3(hex) {
                 const c = new THREE.Color(hex);
                 return new THREE.Vector3(c.r, c.g, c.b);
             }
 
-            
             const volumeMaterial = new THREE.NodeMaterial();
             
             const opaqueRaymarchingTexture = Fn(({ texture, steps}) => {
-                //const planeNormal = uniform(vec3(), "planeNormal");
-                //const planeConstant = uniform(0, "planeConstant");
-                let finalColor = vec4().toVar();;
-                If(cameraBoolean.equal(0), ()=>{
-                    finalColor.assign(vec4(0).toVar());
-                })
-                .Else(() =>{
-                    finalColor.assign(vec4(1, 0, 0, 1).toVar());
-                })
+                let finalColor = vec4().toVar();
+                finalColor.a.assign(0);
                 
                 const clipByPlane = Fn(({ point, n, c }) => {
 
@@ -346,17 +274,14 @@ export function initModelLayer(renderer, scene, {
                     return dist.lessThan(0.0);
 
                 });
-
                 // DVR accumulators
                 let accumColor = vec3(0.0).toVar();
                 let accumAlpha = float(0.0).toVar();
                 const one = float(1.0);
-                
                 //MIP accumulators
                 let accum = float(0.3).toVar();
                 let opacity = float(0.0).toVar();
                 RaymarchingBox(steps, ({ positionRay }) => {
-
                     let transformedPos = positionRay;
                     transformedPos = transformedPos.add(0.5);
                     const mapValue = texture.sample(transformedPos).r.toVar();
@@ -368,16 +293,15 @@ export function initModelLayer(renderer, scene, {
                     If(renderingMode.equal(0), () => {
                         If(mapValue.greaterThan(threshold).and(clip.not()), () => {
                             const p = vec3(positionRay).add(0.5);
-                            //finalColor.assign(colorsMappingUniform.element(2));
-                            //finalColor.r.assign(texture.normal(p).mul(0.5).add(positionRay.mul(1.5).add(0.25)));
                             Loop( rangesSizeUniform, ( { i } ) => {
                                 const minVal = rangeMinsUniform.element(i);
                                 const maxVal = rangeMaxesUniform.element(i);
                                 If(mapValue.greaterThanEqual(minVal).and(mapValue.lessThan(maxVal)), () => {
                                     finalColor.assign(colorsMappingUniform.element(i));
+                                    finalColor.a.assign(opacityMappingUniform.element(i));
                                 }); 
                             } );
-                            finalColor.a.assign(1)
+                            
                             Break();
                         });
                         
@@ -388,18 +312,23 @@ export function initModelLayer(renderer, scene, {
                             const p = vec3(positionRay).add(0.5);
                             accum.assign(max(accum, mapValue));
                         });
-
                     })
                     .Else(() => {
                         If(clip.not(), () => {
-                            const sampleColor = vec3(mapValue, 0, 0);
-                            const sampleAlpha = mapValue;
+                            let sampleColor = vec3(mapValue, 0, 0).toVar();
+                            let sampleAlpha = mapValue.toVar();
+                            
+                            Loop( rangesSizeUniform, ( { i } ) => {
+                                const minVal = rangeMinsUniform.element(i);
+                                const maxVal = rangeMaxesUniform.element(i);
+                                If(mapValue.greaterThanEqual(minVal).and(mapValue.lessThan(maxVal)), () => {
+                                    sampleColor.assign(colorsMappingUniform.element(i));
+                                    sampleAlpha.assign(opacityMappingUniform.element(i));
+                                }); 
+                            } );
                             const oneMinusAlpha = one.sub(accumAlpha);
-
-                            // front-to-back compositing
                             accumColor.assign(accumColor.add(sampleColor.mul(sampleAlpha).mul(oneMinusAlpha)));
                             accumAlpha.assign(accumAlpha.add(sampleAlpha.mul(oneMinusAlpha)));
-
                             // early exit if almost opaque
                             If(accumAlpha.greaterThan(0.95), () => { Break(); });
                         });
@@ -410,17 +339,18 @@ export function initModelLayer(renderer, scene, {
 
                 });
 
-                If((renderingMode.equal(0)), ()=> {
-                    
-                });
-
                 
                 If(accum.greaterThan(threshold).and(renderingMode.equal(1)), ()=> {
-                    opacity.assign(1.0);
-                    finalColor.r.assign(accum);
-                    finalColor.a.assign(opacity);
+                    Loop( rangesSizeUniform, ( { i } ) => {
+                        const minVal = rangeMinsUniform.element(i);
+                        const maxVal = rangeMaxesUniform.element(i);
+                        If(accum.greaterThanEqual(minVal).and(accum.lessThan(maxVal)), () => {
+                            finalColor.assign(colorsMappingUniform.element(i));
+                            finalColor.a.assign(opacityMappingUniform.element(i));
+                        }); 
+                    } );
                 });
-                If((renderingMode.equal(2)), ()=> {
+                If(accum.greaterThan(threshold).and(renderingMode.equal(2)), ()=> {
                     finalColor.r.assign(accumColor);
                     finalColor.a.assign(accumAlpha);
                 });
@@ -451,80 +381,29 @@ export function initModelLayer(renderer, scene, {
 
             
             updatePlaneForMesh(mesh, worldPlane, planeNormal, planeConstant);
-            
-
             /*
-
             mesh.scale.set(30, 30, 30);
-
-
             const initialRotationDeg = { x: 0, y: -180, z: 90 };
-
-
             mesh.rotation.set(
-
-
                 THREE.MathUtils.degToRad(initialRotationDeg.x),
-
-
                 THREE.MathUtils.degToRad(initialRotationDeg.y),
-
-
                 THREE.MathUtils.degToRad(initialRotationDeg.z)
-
-
             );
             */
-
-
-
-
-
-            // Add GUI and controls here (same as your code)
-
-
-            // Add mesh to your scene:
-
-
-
-
-
             render();
-
-
-
-
-
             function render() {
-
                 renderer.renderAsync(modelScene, modelCamera);
-
-
-
             }
-
-
-
-
-
             return mesh;  // return mesh to the caller
-
-
         }
-
         // Usage:
         async function loadAllModels() {
             const modelPromises = [];
-
             for (let i = 1; i <= 4; i++) {
                 const modelUrl = `meshes/Frame0${i}/MeshesZ0.obj`;
                 modelPromises.push(loadModel(modelUrl));
             }
-
-            // Wait for all models to load
             const models = await Promise.all(modelPromises);
-
-            // Now models[0] is Frame01, models[1] is Frame02, etc.
             return models;
         }
 
@@ -534,11 +413,10 @@ export function initModelLayer(renderer, scene, {
 
         loadAllModels().then(loadedModels => {
             models = loadedModels;
-            // Add all models to the scene but hide them initially
             models.forEach(model => {
                 model.visible = false;
                 //modelScene.add(model);
-                //knotClippingGroup.add(model);
+                knotClippingGroup.add(model);
             });
         });
         // In your render/animation loop
@@ -592,127 +470,6 @@ export function initModelLayer(renderer, scene, {
 
         animate();
 
-
-        /*
-        loadModel(modelUrl).then(model => {
-            console.log("Model loaded", model);
-            // Position folder
-            
-            const posFolder = gui.addFolder('Model Position');
-            posFolder.add(model.position, 'x', -5, 5, 0.1).onChange(render);
-            posFolder.add(model.position, 'y', -5, 5, 0.1).onChange(render);
-            posFolder.add(model.position, 'z', -5, 5, 0.1).onChange(render);
-            posFolder.open();
-
-            // Scale folder
-            const scaleFolder = gui.addFolder('Model Scale');
-            scaleFolder.add(model.scale, 'x', 0.001, 2, 0.0005).onChange(render);
-            scaleFolder.add(model.scale, 'y', 0.001, 2, 0.0005).onChange(render);
-            scaleFolder.add(model.scale, 'z', 0.001, 2, 0.0005).onChange(render);
-            scaleFolder.open();
-
-            // Rotation folder (in degrees)
-            const rotFolder = gui.addFolder('Model Rotation');
-            const rot = model.rotation;
-
-            // Display degrees instead of radians in GUI
-            const rotDegrees = { 
-                x: THREE.MathUtils.radToDeg(rot.x), 
-                y: THREE.MathUtils.radToDeg(rot.y), 
-                z: THREE.MathUtils.radToDeg(rot.z) 
-            };
-
-            rotFolder.add(rotDegrees, 'x', -180, 180, 1).onChange((v) => {
-                rot.x = THREE.MathUtils.degToRad(v); 
-                render();
-            });
-            rotFolder.add(rotDegrees, 'y', -180, 180, 1).onChange((v) => {
-                rot.y = THREE.MathUtils.degToRad(v); 
-                render();
-            });
-            rotFolder.add(rotDegrees, 'z', -180, 180, 1).onChange((v) => {
-                rot.z = THREE.MathUtils.degToRad(v); 
-                render();
-            });
-            rotFolder.open();
-
-            //Camera gui
-            // Position folder
-            const camPosFolder = gui.addFolder('Camera Position');
-            camPosFolder.add(modelCamera.position, 'x', -1000, 1000, 0.1).name('X');
-            camPosFolder.add(modelCamera.position, 'y', -1000, 1000, 0.1).name('Y');
-            camPosFolder.add(modelCamera.position, 'z', -1000, 1000, 0.1).name('Z');
-            camPosFolder.open();
-
-            // Rotation folder (in degrees)
-            const camRotDegrees = {
-                x: THREE.MathUtils.radToDeg(modelCamera.rotation.x),
-                y: THREE.MathUtils.radToDeg(modelCamera.rotation.y),
-                z: THREE.MathUtils.radToDeg(modelCamera.rotation.z)
-            };
-
-            const camRotFolder = gui.addFolder('Camera Rotation');
-            camRotFolder.add(camRotDegrees, 'x', -180, 180, 1).name('X (°)').onChange(v => {
-                modelCamera.rotation.x = THREE.MathUtils.degToRad(v);
-            });
-            camRotFolder.add(camRotDegrees, 'y', -180, 180, 1).name('Y (°)').onChange(v => {
-                modelCamera.rotation.y = THREE.MathUtils.degToRad(v);
-            });
-            camRotFolder.add(camRotDegrees, 'z', -180, 180, 1).name('Z (°)').onChange(v => {
-                modelCamera.rotation.z = THREE.MathUtils.degToRad(v);
-            });
-            camRotFolder.open();
-            
-
-            
-            knotClippingGroup.add(model);
-            
-
-
-
-
-
-            // Call the async loader function and then do something with the mesh
-
-
-            
-
-
-            loadVolume(volumePath).then(mesh => {
-
-
-                console.log("Volume mesh loaded", mesh);
-
-
-                //knotClippingGroup.add(mesh);
-                modelScene.add(mesh)
-
-
-                // You can now safely do things with `mesh` here
-
-
-            });
-                    
-                     
-            
-        
-
-            function render() {
-                renderer.render(modelScene, modelCamera);
-
-            }
-            // Add your GUI setup or anything else here
-        });
-        */
-
-    
-
-    
-
-
-    
-    
-
     const modelLayer = renderer.xr.createQuadLayer(
         layerSize.width, layerSize.height,
         position,
@@ -732,84 +489,6 @@ export function initModelLayer(renderer, scene, {
         helper3D,
         controls
     };
-}
-
-function addPlaneMeshWithClipping({ name = 'Plane', scene, gui, clippingGroup }) {
-  if (!scene || !gui || !clippingGroup) {
-    console.error('scene, gui, and clippingGroup are required');
-    return;
-  }
-
-  // Create plane mesh
-  const geometry = new THREE.PlaneGeometry(2, 2);
-  const material = new THREE.MeshBasicMaterial({
-    color: 0x00ff00,
-    side: THREE.DoubleSide,
-    transparent: true,
-    opacity: 0.5,
-  });
-  const planeMesh = new THREE.Mesh(geometry, material);
-
-  planeMesh.scale.set(10, 10, 10);
-  planeMesh.rotation.x = Math.PI / 2; // rotated along X as you said
-
-  scene.add(planeMesh);
-
-  // Create a clipping plane with a default normal and constant (will update)
-  const clippingPlane = new THREE.Plane(new THREE.Vector3(1, 0, 0), 0);
-
-  // Add to the clipping group
-  clippingGroup.clippingPlanes.push(clippingPlane);
-
-  // GUI params initialized from mesh
-  const folder = gui.addFolder(name);
-  const params = {
-    posX: planeMesh.position.x,
-    posY: planeMesh.position.y,
-    posZ: planeMesh.position.z,
-    rotX: planeMesh.rotation.x,
-    rotY: planeMesh.rotation.y,
-    rotZ: planeMesh.rotation.z,
-  };
-
-  // Position controls
-  folder.add(params, 'posX', -10, 10, 0.01).onChange(v => planeMesh.position.x = v);
-  folder.add(params, 'posY', -10, 10, 0.01).onChange(v => planeMesh.position.y = v);
-  folder.add(params, 'posZ', -10, 10, 0.01).onChange(v => planeMesh.position.z = v);
-
-  // Rotation controls (radians)
-  folder.add(params, 'rotX', -Math.PI, Math.PI, 0.01).onChange(v => planeMesh.rotation.x = v);
-  folder.add(params, 'rotY', -Math.PI, Math.PI, 0.01).onChange(v => planeMesh.rotation.y = v);
-  folder.add(params, 'rotZ', -Math.PI, Math.PI, 0.01).onChange(v => planeMesh.rotation.z = v);
-
-  folder.open();
-
-  // Update clipping plane each frame or on change
-  function updateClippingPlane() {
-    // Update world matrix
-    planeMesh.updateWorldMatrix(true, false);
-
-    // Plane normal in world space: local plane normal is (0,0,1) for PlaneGeometry by default
-    const normal = new THREE.Vector3(0, 0, 1);
-    normal.applyQuaternion(planeMesh.getWorldQuaternion(new THREE.Quaternion())).normalize();
-
-    // Plane constant = -normal.dot(point on plane)
-    const worldPosition = new THREE.Vector3();
-    planeMesh.getWorldPosition(worldPosition);
-    const constant = -normal.dot(worldPosition);
-
-    clippingPlane.normal.copy(normal);
-    clippingPlane.constant = constant;
-  }
-
-  // Call once initially
-  updateClippingPlane();
-
-  // Whenever params change, update plane
-  folder.onChange(updateClippingPlane);
-
-  // Also update on animation loop for smooth updates if you move plane dynamically
-  return { planeMesh, clippingPlane, updateClippingPlane };
 }
 
 function addPlaneGUIControl(plane, gui, camera, controls, name = 'Clipping Plane', planeNormal, planeConstant) {
@@ -869,19 +548,6 @@ function addPlaneGUIControl(plane, gui, camera, controls, name = 'Clipping Plane
     });
 
   return folder;
-}
-
-function updateCameraToPlane(camera, plane) {
-    const cameraDistance = 30;
-    const camPos = plane.normal.clone().multiplyScalar(cameraDistance);
-    camera.position.copy(camPos);
-    camera.lookAt(0, 0, 0);
-    //to do orbit
-    //change sign of normal + const when camera is in negative half-space
-    //camera of pos of controller, plane on joystick - a/b - const, rotation
-
-    // Optional: update camera projection matrix if needed
-    camera.updateProjectionMatrix();
 }
 
 function updatePlaneForMesh(mesh, worldPlane, planeNormal, planeConstant) {
