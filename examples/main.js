@@ -104,7 +104,7 @@ function init() {
             const { object } = await loadFBX(
                 scene,
                 gui,
-                'meshes/fbx/ULTRASON   ünitesi.fbx'
+                'meshes/fbx/reduced221.fbx'
             );
 
             console.log('FBX loaded:', object);
@@ -114,7 +114,7 @@ function init() {
         }
     }
 
-    //initFBX();
+    initFBX();
 
     const sphereGeometry = new THREE.SphereGeometry(0.2, 32, 32);
     const sphereMaterial = new THREE.MeshStandardMaterial({ color: 'red' });
