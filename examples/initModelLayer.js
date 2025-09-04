@@ -329,7 +329,11 @@ export function initModelLayer(renderer, scene, {
                                 If(mapValue.greaterThanEqual(minVal).and(mapValue.lessThan(maxVal)), () => {
                                     sampleColor.assign(colorsMappingUniform.element(i));
                                     sampleAlpha.assign(opacityMappingUniform.element(i));
-                                }); 
+                                });
+                                If(mapValue.lessThan(threshold), () => {
+                                    sampleAlpha.assign(0.0);
+                                });  
+                                
                             } );
                             const oneMinusAlpha = one.sub(accumAlpha);
                             accumColor.assign(accumColor.add(sampleColor.mul(sampleAlpha).mul(oneMinusAlpha)));
