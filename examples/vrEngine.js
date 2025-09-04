@@ -81,7 +81,8 @@ export async function initFBX(scene, path) {
     const { object } = await loadFBX(scene, null, path); // pass gui if needed
     console.log('FBX loaded:', object);
     // Optional: scale down initially
-    object.scale.set(0.01, 0.01, 0.01);
+    
+    object.scale.set(0.02, 0.01, 0.01);
 
     // Parameters for GUI
     const params = {
@@ -103,6 +104,7 @@ export async function initFBX(scene, path) {
     gui.add(params, 'posZ', -10, 10, 0.01).name('Position Z').onChange(v => object.position.z = v);
 
     gui.add(params, 'scale', 0.001, 2, 0.001).name('Scale').onChange(v => object.scale.set(v, v, v));
+    
     return object;
   } catch (err) {
     console.error('Error loading FBX:', err);
