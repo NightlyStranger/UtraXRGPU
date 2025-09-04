@@ -328,6 +328,7 @@ export function initModelLayer(renderer, scene, {
                                 const maxVal = rangeMaxesUniform.element(i);
                                 If(mapValue.greaterThanEqual(minVal).and(mapValue.lessThan(maxVal)), () => {
                                     sampleColor.assign(colorsMappingUniform.element(i));
+                                    //alha linear interpolation
                                     sampleAlpha.assign(opacityMappingUniform.element(i));
                                 });
                                 If(mapValue.lessThan(threshold), () => {
