@@ -8,6 +8,7 @@ import { Break, If, texture3D, uniform, Fn, cameraProjectionMatrix,
 import { RaymarchingBox } from 'three/addons/tsl/utils/Raymarching.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadFBX } from './fbxLoader.js';
+import { HTMLMesh } from 'three/addons/interactive/HTMLMesh.js';
 
 // Clipping planes
 const worldPlane = new THREE.Plane(new THREE.Vector3(1, -0.15, 0), 0.0);
@@ -20,7 +21,7 @@ export function initModelLayer(renderer, scene, {
   volumeDimensions = { x: 240, y: 299, z: 282 },
   position = new THREE.Vector3(-1.5, 1.5, -1.5),
   layerSize = { width: 1, height: 1 },
-  cameraY = 300,
+  guiGroup,
   backgroundColor = 0xf0f0f0,
   onLoad = () => {}
 } = {}) {
@@ -63,6 +64,7 @@ export function initModelLayer(renderer, scene, {
 
     // GUI
     const gui = new GUI({ width: 250 });
+    
 
     const renderingMode = uniform(0);
     const threshold = uniform(0.4);
@@ -290,6 +292,9 @@ export function initModelLayer(renderer, scene, {
                         n: planeNormal,
                         c: planeConstant
                     });
+                    const density = float( 0.0 ).toVar();
+                    density.assign(1.0);
+
                     If(renderingMode.equal(0), () => {
                         If(mapValue.greaterThan(threshold).and(clip.not()), () => {
                             const p = vec3(positionRay).add(0.5);
@@ -351,7 +356,7 @@ export function initModelLayer(renderer, scene, {
                     } );
                 });
                 If((renderingMode.equal(2)), ()=> {
-                    finalColor.r.assign(accumColor);
+                    finalColor.rgb.assign(accumColor);
                     finalColor.a.assign(accumAlpha);
                 });
 
@@ -502,6 +507,13 @@ export function initModelLayer(renderer, scene, {
     );
 
     scene.add(modelLayer);
+
+    // GUI mesh inside VR
+    const mesh = new HTMLMesh(gui.domElement);
+    mesh.position.set(-0.75, 1.5, -0.5);
+    mesh.rotation.y = Math.PI / 4;
+    mesh.scale.setScalar(2);
+    guiGroup.add(mesh);
 
     return {
         modelLayer,

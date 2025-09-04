@@ -14,6 +14,7 @@ import {createGreenBox } from './dvrRendring.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SphericalPlaneControls } from './SphericalPlaneControls.js';
 import { setupVRGUI, updateStats, initFBX  } from './vrEngine.js';
+import { InteractiveGroup } from 'three/addons/interactive/InteractiveGroup.js';
 
 let camera, scene, renderer;
 let controller1, controller2;
@@ -266,10 +267,18 @@ function init() {
     
 
     // set up horse animation
-    const { modelLayer, modelScene, modelCamera, worldPlane, viewPlane, helper3D, controls } = initModelLayer(renderer, scene, {
+    //Adding interactive group
+    const intGroup = new InteractiveGroup();
+    intGroup.listenToPointerEvents(renderer, camera);
+    intGroup.listenToXRControllerEvents(controller1);
+    intGroup.listenToXRControllerEvents(controller2);
+    scene.add(intGroup);
+
+    const { modelLayer, modelScene, modelCamera, worldPlane, viewPlane, helper3D, controls, guiGroup} = initModelLayer(renderer, scene, {
         modelUrl: 'meshes/Frame01/MeshesZ0.obj',
         position: new THREE.Vector3(-1.5, 1.5, -1.5),
         layerSize: { width: 3, height: 2 },
+        guiGroup: intGroup,
         onLoad: (model) => {
             console.log('Model loaded:', model);
         }
@@ -319,8 +328,10 @@ function init() {
 
     // set up ui
     //Lambda-functions can be passed
+    
+
     const guiObj = initGUILayer(renderer, scene, parameters, onChange, onThicknessChange);
-    setupVRGUI(
+    /*setupVRGUI(
 					scene,
 					renderer,
 					camera,
@@ -330,6 +341,7 @@ function init() {
 					onChange,
 					onThicknessChange
 	);
+    */
     
     
 }
