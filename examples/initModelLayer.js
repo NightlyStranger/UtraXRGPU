@@ -506,7 +506,6 @@ export function initModelLayer(renderer, scene, {
         () => renderer.render(modelScene, modelCamera)
     );
 
-    mesh.domElement = gui.domElement;
     scene.add(modelLayer);
 
     return {
