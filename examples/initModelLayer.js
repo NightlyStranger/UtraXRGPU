@@ -371,6 +371,7 @@ export function initModelLayer(renderer, scene, {
             volumeMaterial.alphaToCoverage = true;
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), volumeMaterial);
             mesh.position.set(0, 0, 0);
+            mesh.scale.set(2, 2, 2);
             const initialRotationDeg = { x: 0, y: 0, z: 90 };
             mesh.rotation.set(
                 THREE.MathUtils.degToRad(initialRotationDeg.x),
@@ -444,26 +445,48 @@ export function initModelLayer(renderer, scene, {
             volumes = loadedVolumes;
         });
 
+        // state
+        let playAnimation = true;
+        let manualFrame = 0;
+
+        const animParams = {
+            frame: 0,
+            play: () => { playAnimation = true; }
+        };
+
+        // frame slider
+        gui.add(animParams, 'frame', 0, frameCount - 1, 1).name('Frame').onChange((value) => {
+            manualFrame = value;
+            playAnimation = false; // pause on manual frame
+        });
+
+        // play button
+        gui.add(animParams, 'play').name('Play');
+
         function animate() {
             requestAnimationFrame(animate);
 
-            if (models) {
+            let currentFrame;
+            if (playAnimation) {
                 const elapsed = clock.getElapsedTime(); 
-                const currentFrame = Math.floor(elapsed) % frameCount;
+                currentFrame = Math.floor(elapsed) % frameCount;
+                animParams.frame = currentFrame; // keep slider in sync
+            } else {
+                currentFrame = manualFrame;
+            }
 
+            if (models) {
                 models.forEach((model, i) => {
                     model.visible = (i === currentFrame);
                 });
             }
-            
-            if (volumes) {
-                const elapsed = clock.getElapsedTime(); // seconds
-                const currentFrame = Math.floor(elapsed) % frameCount;
 
+            if (volumes) {
                 volumes.forEach((volume, i) => {
                     volume.visible = (i === currentFrame);
                 });
             }
+
 
             renderer.renderAsync(modelScene, modelCamera);
         }
