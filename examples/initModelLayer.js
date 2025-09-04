@@ -398,7 +398,7 @@ export function initModelLayer(renderer, scene, {
             */
             render();
             function render() {
-                renderer.renderAsync(modelScene, modelCamera);
+                renderer.render(modelScene, modelCamera);
             }
             return mesh;  // return mesh to the caller
         }
@@ -493,7 +493,7 @@ export function initModelLayer(renderer, scene, {
             }
 
 
-            renderer.renderAsync(modelScene, modelCamera);
+            renderer.render(modelScene, modelCamera);
         }
 
         animate();
