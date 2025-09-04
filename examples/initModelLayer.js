@@ -350,7 +350,7 @@ export function initModelLayer(renderer, scene, {
                         }); 
                     } );
                 });
-                If(accum.greaterThan(threshold).and(renderingMode.equal(2)), ()=> {
+                If((renderingMode.equal(2)), ()=> {
                     finalColor.r.assign(accumColor);
                     finalColor.a.assign(accumAlpha);
                 });
