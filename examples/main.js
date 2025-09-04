@@ -13,6 +13,7 @@ import { loadFBX } from './fbxLoader.js';
 import {createGreenBox } from './dvrRendring.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SphericalPlaneControls } from './SphericalPlaneControls.js';
+import { setupVRGUI, updateStats, initFBX  } from './vrEngine.js';
 
 let camera, scene, renderer;
 let controller1, controller2;
@@ -319,6 +320,16 @@ function init() {
     // set up ui
     //Lambda-functions can be passed
     const guiObj = initGUILayer(renderer, scene, parameters, onChange, onThicknessChange);
+    setupVRGUI(
+					scene,
+					renderer,
+					camera,
+					controller1,
+					controller2,
+					parameters,
+					onChange,
+					onThicknessChange
+	);
     
     
 }
