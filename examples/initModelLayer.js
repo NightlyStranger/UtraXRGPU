@@ -506,14 +506,8 @@ export function initModelLayer(renderer, scene, {
         () => renderer.render(modelScene, modelCamera)
     );
 
+    mesh.domElement = gui.domElement;
     scene.add(modelLayer);
-
-    // GUI mesh inside VR
-    const mesh = new HTMLMesh(gui.domElement);
-    mesh.position.set(-0.75, 1.5, -0.5);
-    mesh.rotation.y = Math.PI / 4;
-    mesh.scale.setScalar(2);
-    guiGroup.add(mesh);
 
     return {
         modelLayer,
