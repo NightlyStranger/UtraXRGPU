@@ -2,7 +2,6 @@ import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import Stats from 'three/addons/libs/stats.module.js';
 import { InteractiveGroup } from 'three/addons/interactive/InteractiveGroup.js';
 import { HTMLMesh } from 'three/addons/interactive/HTMLMesh.js';
-import { TransformControls } from 'three/addons/controls/TransformControls.js';
 
 let stats;
 let statsMesh;
@@ -76,17 +75,34 @@ import { loadFBX } from './fbxLoader.js';
  * @param {string} path - Path to the FBX file.
  * @returns {Promise<THREE.Object3D>} - The loaded FBX object.
  */
-export async function initFBX(renderer, scene, camera, path) {
+export async function initFBX(scene, path) {
   
   try {
     const { object } = await loadFBX(scene, null, path); // pass gui if needed
-    
-    console.log(object);
-    // TransformControls
-    const transformControls = new TransformControls(camera, renderer.domElement);
-    transformControls.attach(object);     // attach to cube
-    scene.add(transformControls);
     console.log('FBX loaded:', object);
+    // Optional: scale down initially
+    object.scale.set(0.01, 0.01, 0.01);
+
+    // Parameters for GUI
+    const params = {
+        posX: object.position.x,
+        posY: object.position.y,
+        posZ: object.position.z,
+        scale: object.scale.x
+    };
+
+    // Create GUI
+    const gui = new GUI({ width: 250 });
+    gui.domElement.style.position = 'absolute';
+    gui.domElement.style.top = '10px';
+    gui.domElement.style.right = '10px';
+    gui.title = 'FBX Transform';
+
+    gui.add(params, 'posX', -10, 10, 0.01).name('Position X').onChange(v => object.position.x = v);
+    gui.add(params, 'posY', -10, 10, 0.01).name('Position Y').onChange(v => object.position.y = v);
+    gui.add(params, 'posZ', -10, 10, 0.01).name('Position Z').onChange(v => object.position.z = v);
+
+    gui.add(params, 'scale', 0.001, 2, 0.001).name('Scale').onChange(v => object.scale.set(v, v, v));
     return object;
   } catch (err) {
     console.error('Error loading FBX:', err);
