@@ -15,6 +15,9 @@ const worldPlane = new THREE.Plane(new THREE.Vector3(1, -0.15, 0), 0.0);
 const viewPlane = worldPlane.clone();
 let globalVolumeMesh;
 
+const modelCamera = new THREE.PerspectiveCamera(50, 1, 1, 10000);
+modelCamera.position.set(2.0, 8.0, 3.0);
+
 export function initModelLayer(renderer, scene, {
   modelUrl,
   volumePath = 'volumes/Frame01/Volume.downsampled.raw',
@@ -23,11 +26,13 @@ export function initModelLayer(renderer, scene, {
   layerSize = { width: 1, height: 1 },
   guiGroup,
   backgroundColor = 0xf0f0f0,
-  onLoad = () => {}
+  onLoad = () => {},
 } = {}) {
 
     const modelScene = new THREE.Scene();
     let helper3D;
+
+    //addTransformableQuad(scene)
 
     // Clipping Groups
 
@@ -43,9 +48,7 @@ export function initModelLayer(renderer, scene, {
 
 
     modelScene.background = new THREE.Color(backgroundColor);
-    const modelCamera = new THREE.PerspectiveCamera(50, 1, 1, 10000);
 
-    modelCamera.position.set(0.0, 0.0, 3.0);
     const controls = new OrbitControls(modelCamera, renderer.domElement);
     controls.target.set(0, 0, 0);
     controls.update();
@@ -64,6 +67,7 @@ export function initModelLayer(renderer, scene, {
 
     // GUI
     const gui = new GUI({ width: 250 });
+
     
 
     const renderingMode = uniform(0);
@@ -190,8 +194,30 @@ export function initModelLayer(renderer, scene, {
             modelUrl,
             (obj) => {
                 const model = obj;
-                model.scale.set(0.007, 0.007, 0.007);
-                model.position.set(0, -0.5, 0);
+                const rowMajor = [
+                    0, 1, 0, 0,
+                    0, 0, -1, 0,
+                    -1, 0, 0, 0,
+                    0, 0, 0, 1
+                ];
+                const m = new THREE.Matrix4();
+                m.set(
+                    rowMajor[0], rowMajor[4], rowMajor[8],  rowMajor[12],
+                    rowMajor[1], rowMajor[5], rowMajor[9],  rowMajor[13],
+                    rowMajor[2], rowMajor[6], rowMajor[10], rowMajor[14],
+                    rowMajor[3], rowMajor[7], rowMajor[11], rowMajor[15]
+                );
+                // Extract rotation only
+                const quat = new THREE.Quaternion();
+                m.extractRotation(m);
+                quat.setFromRotationMatrix(m);
+                console.log("Rotation", quat);
+
+                // Apply rotation
+                model.scale.set(0.02, 0.02, 0.02);
+                model.position.set(0, -2, +0.0273178);
+                //model.quaternion.copy(quat);
+                //model.applyMatrix4(m);
 
                 const cherryMaterial = new THREE.MeshPhysicalMaterial({
                     color: new THREE.Color(0xff0055),
@@ -266,6 +292,7 @@ export function initModelLayer(renderer, scene, {
             const volumeMaterial = new THREE.NodeMaterial();
             
             const opaqueRaymarchingTexture = Fn(({ texture, steps}) => {
+                //Add in g channel second texture
                 let finalColor = vec4().toVar();
                 finalColor.a.assign(0);
                 
@@ -274,6 +301,14 @@ export function initModelLayer(renderer, scene, {
                     const dist = n.normalize().dot(point).add(c);
 
                     return dist.lessThan(0.0);
+
+                });
+
+                const getASliceFromVolume = Fn(({ point, n, c }) => {
+
+                    const dist = n.normalize().dot(point).add(c);
+
+                    return dist.abs().greaterThan(0.01);
 
                 });
                 // DVR accumulators
@@ -292,6 +327,13 @@ export function initModelLayer(renderer, scene, {
                         n: planeNormal,
                         c: planeConstant
                     });
+                    /*
+                    const clip = getASliceFromVolume({
+                        point: positionRay,
+                        n: planeNormal,
+                        c: planeConstant
+                    });
+                    */
                     const density = float( 0.0 ).toVar();
                     density.assign(1.0);
 
@@ -322,6 +364,7 @@ export function initModelLayer(renderer, scene, {
                         If(clip.not(), () => {
                             let sampleColor = vec3(mapValue, 0, 0).toVar();
                             let sampleAlpha = mapValue.toVar();
+                            //initial point = (0, 0, 0)l
                             
                             Loop( rangesSizeUniform, ( { i } ) => {
                                 const minVal = rangeMinsUniform.element(i);
@@ -364,7 +407,6 @@ export function initModelLayer(renderer, scene, {
                     finalColor.rgb.assign(accumColor);
                     finalColor.a.assign(accumAlpha);
                 });
-
                 
                 return finalColor;
 
@@ -375,19 +417,55 @@ export function initModelLayer(renderer, scene, {
                 texture: texture3D(texture, null, 0),
                 steps: 128
             });
-            
             volumeMaterial.side = THREE.BackSide;
             volumeMaterial.transparent = true;
             volumeMaterial.alphaToCoverage = true;
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), volumeMaterial);
-            mesh.position.set(0, 0, 0);
-            mesh.scale.set(2, 2, 2);
-            const initialRotationDeg = { x: 0, y: 0, z: 90 };
-            mesh.rotation.set(
-                THREE.MathUtils.degToRad(initialRotationDeg.x),
-                THREE.MathUtils.degToRad(initialRotationDeg.y),
-                THREE.MathUtils.degToRad(initialRotationDeg.z)
+            
+            const m = new THREE.Matrix4();
+
+            // Fill with your values (column-major)
+            const rowMajor = [
+                0, 100, 0, 0,
+                0, 0, -124.498, 0,
+                -117.557, 0, 0, 0,
+                0, 100, -1.36589, 1
+            ];
+
+            // Convert to column-major for Three.js
+            m.set(
+                rowMajor[0],  rowMajor[4],  rowMajor[8],  rowMajor[12],
+                rowMajor[1],  rowMajor[5],  rowMajor[9],  rowMajor[13],
+                rowMajor[2],  rowMajor[6],  rowMajor[10], rowMajor[14],
+                rowMajor[3],  rowMajor[7],  rowMajor[11], rowMajor[15]
             );
+            const pos = new THREE.Vector3();
+            const quat = new THREE.Quaternion();
+            const scale = new THREE.Vector3();
+
+            m.decompose(pos, quat, scale);
+            
+            scale.x /= 50;
+            scale.y /= 50;
+            scale.z /= 50;
+
+            pos.x = pos.x / 50;
+            pos.y = pos.y / 50;
+            pos.z = pos.z / 50;
+
+            //mesh.position.set(pos.x, pos.y, pos.z);
+            
+            mesh.scale.copy(scale);
+            //mesh.position.set(pos);
+            //const initialRotationDeg = { x: 0, y: 0, z: 90 };
+            const euler = new THREE.Euler().setFromQuaternion(quat);
+            console.log('rot (deg)', pos);
+            /*mesh.rotation.set(
+                THREE.MathUtils.degToRad(euler.x),
+                THREE.MathUtils.degToRad(euler.y),
+                THREE.MathUtils.degToRad(euler.z)
+            );*/
+            mesh.quaternion.copy(quat);
             globalVolumeMesh = mesh;
 
             
@@ -426,7 +504,35 @@ export function initModelLayer(renderer, scene, {
             models = loadedModels;
             models.forEach(model => {
                 model.visible = false;
-                //modelScene.add(model);
+                let copyModel = model.clone();
+                copyModel.visible = true;
+                copyModel.position.z = -1;
+                scene.add(copyModel);
+                const copyParams = {
+                    x: copyModel.position.x,
+                    y: copyModel.position.y,
+                    z: copyModel.position.z
+                };
+
+                // Create GUI folder
+                const copyFolder = gui.addFolder('Copy Model Position');
+
+                // X
+                copyFolder.add(copyParams, 'x', -5, 5, 0.01).name('X').onChange(() => {
+                    copyModel.position.x = copyParams.x;
+                });
+
+                // Y
+                copyFolder.add(copyParams, 'y', -5, 5, 0.01).name('Y').onChange(() => {
+                    copyModel.position.y = copyParams.y;
+                });
+
+                // Z
+                copyFolder.add(copyParams, 'z', -5, 5, 0.01).name('Z').onChange(() => {
+                    copyModel.position.z = copyParams.z;
+                });
+
+                copyFolder.open();
                 knotClippingGroup.add(model);
             });
         });
@@ -503,14 +609,18 @@ export function initModelLayer(renderer, scene, {
 
         animate();
 
+    
+
+    const layerPosition = new THREE.Vector3(-1.85, 1.7, -2.25);
+    const layerScale = new THREE.Vector2(0.7, 0.5);
     const modelLayer = renderer.xr.createQuadLayer(
-        layerSize.width, layerSize.height,
-        position,
+        layerSize.width*0.22, layerSize.height*0.25,
+        layerPosition,
         new THREE.Quaternion(),
         layerSize.width * 800, layerSize.height * 800,
         () => renderer.render(modelScene, modelCamera)
     );
-
+    
     scene.add(modelLayer);
 
     return {
@@ -561,7 +671,26 @@ function addPlaneGUIControl(plane, gui, camera, controls, name = 'Clipping Plane
 
         if (plane.helper) plane.helper.update(); // optional
     }
+    /*
+    if (modelCamera) {
+        // normalize the plane normal
+        const n = plane.normal.clone().normalize();
 
+        // position camera a fixed distance away from the plane, opposite to normal
+        const cameraDistance = 3.0; // you can adjust this
+        const planePoint = n.clone().multiplyScalar(-plane.constant);
+        const cameraPosition = planePoint.clone().addScaledVector(n, -cameraDistance);
+
+        modelCamera.position.copy(cameraPosition);
+        modelCamera.lookAt(planePoint);
+        modelCamera.updateMatrixWorld();
+
+        if (controls) {
+            controls.target.copy(planePoint);
+            controls.update();
+        }
+    }
+    */
     //updateCameraToPlane(camera, plane);
   }
 

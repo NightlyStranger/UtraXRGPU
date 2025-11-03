@@ -15,6 +15,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SphericalPlaneControls } from './SphericalPlaneControls.js';
 import { setupVRGUI, updateStats, initFBX  } from './vrEngine.js';
 import { InteractiveGroup } from 'three/addons/interactive/InteractiveGroup.js';
+import { addQuad } from './intersectionHelper.js';
 
 let camera, scene, renderer;
 let controller1, controller2;
@@ -88,6 +89,7 @@ function init() {
 
     camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 10 );
     camera.position.set( 0, 1.6, 3 );
+    //camera.position.set( 0, 0, 3 );
 
     
     
@@ -104,7 +106,7 @@ function init() {
             const { object } = await loadFBX(
                 scene,
                 gui,
-                'meshes/fbx/reduced221.fbx'
+                'meshes/fbx/reduced_ultrasound_machine.fbx'
             );
 
             console.log('FBX loaded:', object);
@@ -114,7 +116,7 @@ function init() {
         }
     }
 
-    //initFBX();
+    initFBX();
 
     const sphereGeometry = new THREE.SphereGeometry(0.2, 32, 32);
     const sphereMaterial = new THREE.MeshStandardMaterial({ color: 'red' });
@@ -283,6 +285,8 @@ function init() {
             console.log('Model loaded:', model);
         }
     });
+
+    //addQuad(scene);
     clippingCamera = modelCamera;
     clippingWorldPlane = worldPlane;
     clippingViewPlane = viewPlane;
