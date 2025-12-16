@@ -889,7 +889,7 @@ export function initModelLayer(renderer, scene, {
             layerPosition.y,
             layerPosition.z
         );
-        
+        /*
         const layer = renderer.xr.createQuadLayer(
             layerSize.width * 0.11,
             layerSize.height * 0.12,
@@ -907,6 +907,7 @@ export function initModelLayer(renderer, scene, {
         
         scene.add(layer);
         extraLayers.push(layer);
+        */
     }
 
     return {
