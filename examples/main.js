@@ -357,7 +357,7 @@ function init() {
     });
     */
 
-    offscreenLayer = modelLayer;
+    //offscreenLayer = modelLayer;
     // Offscreen Layer Transform folder
     /*
     const offscreenFolder = gui.addFolder("Offscreen Layer Transform");
@@ -570,7 +570,7 @@ function render() {
                 const aPressed = gp.buttons[4]?.pressed;
                 const bPressed = gp.buttons[5]?.pressed;
 
-                if (isReleased(4)) {
+                if (aPressed) {
                     if (nextLayerIndex >= globalRenderOffscreenLayers.length) {
                         console.log('All layers already enabled');
                         return;
