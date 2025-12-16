@@ -265,10 +265,12 @@ function init() {
     }
 
     controller1 = renderer.xr.getController( 0 );
+    /*
     controller1.addEventListener( 'selectstart', onSelectStart );
     controller1.addEventListener( 'selectend', onSelectEnd );
     controller1.addEventListener( 'squeezestart', onSqueezeStart );
     controller1.addEventListener( 'squeezeend', onSqueezeEnd );
+    */
     controller1.addEventListener( 'connected', function ( event ) {
 
         this.add( buildController( event.data ) );
@@ -282,10 +284,12 @@ function init() {
     scene.add( controller1 );
 
     controller2 = renderer.xr.getController( 1 );
+    /*
     controller2.addEventListener( 'selectstart', onSelectStart );
     controller2.addEventListener( 'selectend', onSelectEnd );
     controller2.addEventListener( 'squeezestart', onSqueezeStart );
     controller2.addEventListener( 'squeezeend', onSqueezeEnd );
+    */
     controller2.addEventListener( 'connected', function ( event ) {
 
         this.add( buildController( event.data ) );
@@ -386,7 +390,7 @@ function init() {
     //Lambda-functions can be passed
     
 
-    const guiObj = initGUILayer(renderer, scene, parameters, onChange, onThicknessChange);
+    //const guiObj = initGUILayer(renderer, scene, parameters, onChange, onThicknessChange);
     /*setupVRGUI(
 					scene,
 					renderer,
