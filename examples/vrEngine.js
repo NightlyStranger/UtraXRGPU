@@ -85,7 +85,7 @@ export async function initFBX(scene, path) {
     };
 
     // Create GUI
-    /*
+    
     const gui = new GUI({ width: 250 });
     gui.domElement.style.position = 'absolute';
     gui.domElement.style.top = '10px';
@@ -97,7 +97,7 @@ export async function initFBX(scene, path) {
     gui.add(params, 'posZ', -10, 10, 0.01).name('Position Z').onChange(v => object.position.z = v);
 
     gui.add(params, 'scale', 0.001, 2, 0.001).name('Scale').onChange(v => object.scale.set(v, v, v));
-    */
+    
     
     return object;
   } catch (err) {

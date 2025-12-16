@@ -90,7 +90,7 @@ function init() {
     raycaster = new THREE.Raycaster();
 
     camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 10 );
-    camera.position.set( 0, 1.6, 3 );
+    camera.position.set( 0, 1.6, 4.89 );
     // Set position
     /*camera.position.set(0, 3, 1);
 
@@ -552,6 +552,12 @@ function render() {
 
     //==controllers handle
     // === Handle A/B button presses on controller1 ===
+    function isReleased(buttonIndex) {
+        const pressed = gp.buttons[buttonIndex]?.pressed ?? false;
+        const released = prevButtons[buttonIndex] && !pressed;
+        prevButtons[buttonIndex] = pressed;
+        return released;
+    }
     const session = renderer.xr.getSession();
     if (session) {
         for (const source of session.inputSources) {
@@ -560,7 +566,7 @@ function render() {
                 const aPressed = gp.buttons[4]?.pressed;
                 const bPressed = gp.buttons[5]?.pressed;
 
-                if (aPressed) {
+                if (isReleased(4)) {
                     if (nextLayerIndex >= globalRenderOffscreenLayers.length) {
                         console.log('All layers already enabled');
                         return;
@@ -576,9 +582,24 @@ function render() {
                 } else {
                     sphere.material.color.set('red');
                 }
+
             }
         }
     }
+    window.addEventListener('keydown', (e) => {
+                    if (e.repeat) return; // prevent auto-repeat spam
+
+                    if (e.code === 'KeyN') {
+                            if (nextLayerIndex >= globalRenderOffscreenLayers.length) {
+                            console.log('All layers already enabled');
+                            return;
+                        }
+
+                        globalRenderOffscreenLayers[nextLayerIndex] = true;
+                        console.log(`Layer ${nextLayerIndex + 1} enabled`);
+                        nextLayerIndex++;
+                    }
+                });
 
     //handleController( controller1 );
     //handleController( controller2 );

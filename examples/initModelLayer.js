@@ -838,10 +838,11 @@ export function initModelLayer(renderer, scene, {
                     }
                     */
 
-                    invCube1Matrix.copy(copyModel.matrixWorld).invert();
+                    /*invCube1Matrix.copy(copyModel.matrixWorld).invert();
                     worldPlane.copy(refferencePlane);
                     worldPlane.applyMatrix4(invCube1Matrix);
                     worldPlane.applyMatrix4(model.matrixWorld);
+                    */
                     
                 });
             }
@@ -849,10 +850,12 @@ export function initModelLayer(renderer, scene, {
             if (volumes) {
                 volumes.forEach((volume, i) => {
                     volume.visible = (i === currentFrame);
+                    /*
                     invCube1Matrix.copy(copyModel.matrixWorld).invert();
                     worldPlane.copy(refferencePlane);
                     worldPlane.applyMatrix4(invCube1Matrix);
                     worldPlane.applyMatrix4(model.matrixWorld);
+                    */
                 });
             }
 
@@ -866,9 +869,9 @@ export function initModelLayer(renderer, scene, {
     
 
     //const layerPosition = new THREE.Vector3(-1.85, 1.7, -2.25);
-    const layerPosition = new THREE.Vector3(-1.85, 1.7, 0.5);
+    const layerPosition = new THREE.Vector3(-0.4, 1.35, -0.7);
     const modelLayer = renderer.xr.createQuadLayer(
-        layerSize.width*0.22, layerSize.height*0.25,
+        layerSize.width*0.11, layerSize.height*0.12,
         layerPosition,
         new THREE.Quaternion(),
         layerSize.width * 800, layerSize.height * 800,
@@ -878,17 +881,18 @@ export function initModelLayer(renderer, scene, {
     scene.add(modelLayer);
 
     const extraLayers = [];
-    const layerWidthWorld = layerSize.width * 0.22;
-    const gap = layerWidthWorld * 1.1; // small spacing between screens
+    const layerWidthWorld = layerSize.width * 0.11;
+    const gap = layerWidthWorld * 1; // small spacing between screens
     for (let i = 0; i < 5; i++) {
         const pos = new THREE.Vector3(
             layerPosition.x + (i + 1) * gap, // ⬅️ move right
             layerPosition.y,
             layerPosition.z
         );
+        
         const layer = renderer.xr.createQuadLayer(
-            layerSize.width * 0.22,
-            layerSize.height * 0.25,
+            layerSize.width * 0.11,
+            layerSize.height * 0.12,
             pos,
             new THREE.Quaternion(),
             layerSize.width * 800,
@@ -900,6 +904,7 @@ export function initModelLayer(renderer, scene, {
                 renderOffscreenLayers[layerIndex] = false
             }
         );
+        
         scene.add(layer);
         extraLayers.push(layer);
     }
