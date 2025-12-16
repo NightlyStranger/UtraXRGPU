@@ -4,19 +4,30 @@ import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { Break, If, texture3D, uniform, Fn, cameraProjectionMatrix, 
        modelViewMatrix,float, vec3, vec4,positionLocal, mul, cameraPosition, modelWorldMatrixInverse, Loop, max,
-       uniformArray} from 'three/tsl';
+       uniformArray, texture} from 'three/tsl';
 import { RaymarchingBox } from 'three/addons/tsl/utils/Raymarching.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadFBX } from './fbxLoader.js';
 import { HTMLMesh } from 'three/addons/interactive/HTMLMesh.js';
 
 // Clipping planes
-const worldPlane = new THREE.Plane(new THREE.Vector3(1, -0.15, 0), 0.0);
+const worldPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0.0);
+const refferencePlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0.0);
 const viewPlane = worldPlane.clone();
 let globalVolumeMesh;
 
 const modelCamera = new THREE.PerspectiveCamera(50, 1, 1, 10000);
-modelCamera.position.set(2.0, 8.0, 3.0);
+modelCamera.position.set(0.0, 0.0, 10.0);
+
+let renderTarget;
+let renderModelLayer = true;
+const dpr = window.devicePixelRatio;
+
+const invCube1Matrix = new THREE.Matrix4();
+let copyModel;
+const renderOffscreenLayers = [false, false, false, false, false];
+
+let nextLayerIndex = 0;
 
 export function initModelLayer(renderer, scene, {
   modelUrl,
@@ -28,6 +39,19 @@ export function initModelLayer(renderer, scene, {
   backgroundColor = 0xf0f0f0,
   onLoad = () => {},
 } = {}) {
+    renderTarget = new THREE.RenderTarget(1024, 1024);
+
+    const quadGeo = new THREE.PlaneGeometry(1, 1);
+    const quadMat = new THREE.MeshBasicNodeMaterial();
+
+    quadMat.colorNode = texture(renderTarget.texture);
+
+    const quad = new THREE.Mesh(quadGeo, quadMat);
+
+    // place in VR space
+    quad.position.set(0, 1.5, -2);
+
+    scene.add(quad);
 
     const modelScene = new THREE.Scene();
     let helper3D;
@@ -35,6 +59,7 @@ export function initModelLayer(renderer, scene, {
     //addTransformableQuad(scene)
 
     // Clipping Groups
+    //Offscreen clipping plane
 
     const globalClippingGroup = new THREE.ClippingGroup();
     globalClippingGroup.clippingPlanes = [];
@@ -45,17 +70,23 @@ export function initModelLayer(renderer, scene, {
 
     modelScene.add( globalClippingGroup );
     globalClippingGroup.add( knotClippingGroup );
+    //Refference clipping plane
+    const globalClippingGroup2 = new THREE.ClippingGroup();
+    globalClippingGroup2.clippingPlanes = [];
+
+    // Knot group #2
+    const knotClippingGroup2 = new THREE.ClippingGroup();
+    knotClippingGroup2.clippingPlanes = [ refferencePlane ];
+    knotClippingGroup2.clipIntersection = true;
+
+    globalClippingGroup2.add(knotClippingGroup2);
+    scene.add(globalClippingGroup2);
+
 
 
     modelScene.background = new THREE.Color(backgroundColor);
 
-    const controls = new OrbitControls(modelCamera, renderer.domElement);
-    controls.target.set(0, 0, 0);
-    controls.update();
-    controls.addEventListener('change', () => {
-                
-    });
-    //controls.enabled = false;
+    let controls;
 
     const light1 = new THREE.DirectionalLight(0xefefff, 1.5);
     light1.position.set(1, 1, 1).normalize();
@@ -68,7 +99,37 @@ export function initModelLayer(renderer, scene, {
     // GUI
     const gui = new GUI({ width: 250 });
 
-    
+    const camFolder = gui.addFolder('Model Camera');
+    camFolder.add(modelCamera.position, 'x', -50, 50, 0.1).name('posX');
+    camFolder.add(modelCamera.position, 'y', -50, 50, 0.1).name('posY');
+    camFolder.add(modelCamera.position, 'z', -50, 50, 0.1).name('posZ');
+
+    camFolder.add(modelCamera.rotation, 'x', -Math.PI, Math.PI, 0.01).name('rotX');
+    camFolder.add(modelCamera.rotation, 'y', -Math.PI, Math.PI, 0.01).name('rotY');
+    camFolder.add(modelCamera.rotation, 'z', -Math.PI, Math.PI, 0.01).name('rotZ');
+
+    camFolder.open();
+
+    // GUI folder
+    const guiFolder = gui.addFolder('Extra Layers');
+
+    // Button object
+    const guiControls = {
+        enableNextLayer: () => {
+            if (nextLayerIndex >= renderOffscreenLayers.length) {
+                console.log('All layers already enabled');
+                return;
+            }
+
+            renderOffscreenLayers[nextLayerIndex] = true;
+            console.log(`Layer ${nextLayerIndex + 1} enabled`);
+            nextLayerIndex++;
+        }
+    };
+
+    // Add button to GUI
+    guiFolder.add(guiControls, 'enableNextLayer').name('Enable Next Layer');
+    guiFolder.open();    
 
     const renderingMode = uniform(0);
     const threshold = uniform(0.4);
@@ -194,6 +255,7 @@ export function initModelLayer(renderer, scene, {
             modelUrl,
             (obj) => {
                 const model = obj;
+                
                 const rowMajor = [
                     0, 1, 0, 0,
                     0, 0, -1, 0,
@@ -214,10 +276,28 @@ export function initModelLayer(renderer, scene, {
                 console.log("Rotation", quat);
 
                 // Apply rotation
-                model.scale.set(0.02, 0.02, 0.02);
-                model.position.set(0, -2, +0.0273178);
-                //model.quaternion.copy(quat);
+                //model.scale.set(0.02, 0.02, 0.02);
+
                 //model.applyMatrix4(m);
+
+                // ------------------------------
+                // 3) Additional matrix (M2)
+                // ------------------------------
+                const M2 = new THREE.Matrix4();
+
+                // Example rotation (change this to whatever you need)
+                M2.makeRotationX(THREE.MathUtils.degToRad(90));
+
+
+                // ------------------------------
+                // 4) Apply matrices one by one
+                // ------------------------------
+                model.scale.set(0.02, 0.02, 0.02);
+
+                model.applyMatrix4(m);   // first transformation
+                model.applyMatrix4(M2);  // second transformation
+
+
 
                 const cherryMaterial = new THREE.MeshPhysicalMaterial({
                     color: new THREE.Color(0xff0055),
@@ -226,7 +306,7 @@ export function initModelLayer(renderer, scene, {
                     transmission: 1.0,
                     thickness: 1.0,
                     transparent: true,
-                    opacity: 0.6,
+                    opacity: 1.0,
                     ior: 1.4,
                     side: THREE.DoubleSide,
                     envMapIntensity: 1.5,
@@ -364,13 +444,12 @@ export function initModelLayer(renderer, scene, {
                         If(clip.not(), () => {
                             let sampleColor = vec3(mapValue, 0, 0).toVar();
                             let sampleAlpha = mapValue.toVar();
-                            //initial point = (0, 0, 0)l
                             
                             Loop( rangesSizeUniform, ( { i } ) => {
                                 const minVal = rangeMinsUniform.element(i);
                                 const maxVal = rangeMaxesUniform.element(i);
                                 If(mapValue.greaterThanEqual(minVal).and(mapValue.lessThan(maxVal)), () => {
-                                    sampleColor.assign(colorsMappingUniform.element(i));
+                                    const k =  sampleColor.assign(colorsMappingUniform.element(i));
                                     //alha linear interpolation
                                     sampleAlpha.assign(opacityMappingUniform.element(i));
                                 });
@@ -379,6 +458,65 @@ export function initModelLayer(renderer, scene, {
                                 });  
                                 
                             } );
+                            
+                            /*Loop(rangesSizeUniform, ({ i }) => {
+
+                                const minVal = rangeMinsUniform.element(i);
+                                const maxVal = rangeMaxesUniform.element(i);
+
+                                // Only interpolate if mapValue is inside this range
+                                If(mapValue.greaterThanEqual(minVal).and(mapValue.lessThan(maxVal)), () => {
+
+                                    // Special case: first range
+                                    If(i.equal(0), () => {
+
+                                        const t = mapValue.sub(minVal)
+                                            .div(maxVal.sub(minVal))
+                                            .clamp(0.0, 1.0);
+
+                                        sampleColor.assign(
+                                            vec3(1.0).mix(colorsMappingUniform.element(0), t)
+                                        );
+
+                                        sampleAlpha.assign(
+                                            float(0.0).mix(opacityMappingUniform.element(0), t)
+                                        );
+
+                                    }, () => {
+
+                                        // Normal case: interpolate between previous and current
+                                        const prevMin = rangeMinsUniform.element(i - 1);
+                                        const prevMax = rangeMaxesUniform.element(i - 1);
+
+                                        const t = mapValue.sub(minVal)
+                                            .div(maxVal.sub(minVal))
+                                            .clamp(0.0, 1.0);
+
+                                        sampleColor.assign(
+                                            colorsMappingUniform.element(i - 1).mix(
+                                                colorsMappingUniform.element(i),
+                                                t
+                                            )
+                                        );
+
+                                        sampleAlpha.assign(
+                                            opacityMappingUniform.element(i - 1).mix(
+                                                opacityMappingUniform.element(i),
+                                                t
+                                            )
+                                        );
+
+                                    });
+
+                                });
+
+                                // Optional: global threshold check
+                                If(mapValue.lessThan(threshold), () => {
+                                    sampleAlpha.assign(0.0);
+                                });
+
+                            });
+                            */
                             const oneMinusAlpha = one.sub(accumAlpha);
                             accumColor.assign(accumColor.add(sampleColor.mul(sampleAlpha).mul(oneMinusAlpha)));
                             accumAlpha.assign(accumAlpha.add(sampleAlpha.mul(oneMinusAlpha)));
@@ -423,7 +561,7 @@ export function initModelLayer(renderer, scene, {
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), volumeMaterial);
             
             const m = new THREE.Matrix4();
-
+            /*
             // Fill with your values (column-major)
             const rowMajor = [
                 0, 100, 0, 0,
@@ -460,12 +598,37 @@ export function initModelLayer(renderer, scene, {
             //const initialRotationDeg = { x: 0, y: 0, z: 90 };
             const euler = new THREE.Euler().setFromQuaternion(quat);
             console.log('rot (deg)', pos);
+            */
             /*mesh.rotation.set(
                 THREE.MathUtils.degToRad(euler.x),
                 THREE.MathUtils.degToRad(euler.y),
                 THREE.MathUtils.degToRad(euler.z)
             );*/
+            /*
             mesh.quaternion.copy(quat);
+            */
+
+            // 1️⃣ Create helper conversion
+            const deg = THREE.MathUtils.degToRad;
+
+            // 2️⃣ Define transform parameters
+            const pos = new THREE.Vector3(-1.36589, 0, -100);
+            const rotDeg = new THREE.Vector3(90, 3.415095e-06, 270);
+            const scale = new THREE.Vector3(235.114, 200, 248.996);
+
+            // 3️⃣ Apply global scale factor (1/50)
+            pos.multiplyScalar(1 / 50);
+            scale.multiplyScalar(1 / 50);
+
+            // 4️⃣ Apply to mesh
+            mesh.position.copy(pos);
+            mesh.rotation.set(deg(rotDeg.x), deg(rotDeg.y), deg(rotDeg.z));
+            mesh.scale.copy(scale);
+
+            const M2 = new THREE.Matrix4();
+            M2.makeRotationX(THREE.MathUtils.degToRad(90));
+            mesh.applyMatrix4(M2);
+
             globalVolumeMesh = mesh;
 
             
@@ -482,6 +645,17 @@ export function initModelLayer(renderer, scene, {
             render();
             function render() {
                 renderer.render(modelScene, modelCamera);
+                
+            }
+
+            function takeModelSnapshot() {
+                // ensure the modelScene is fully rendered
+                renderer.setRenderTarget(renderTarget);
+                renderer.clear();
+                renderer.render(modelScene, modelCamera);
+                renderer.setRenderTarget(null);
+
+                console.log("Snapshot captured:", snapshotTarget.texture);
             }
             return mesh;  // return mesh to the caller
         }
@@ -502,39 +676,84 @@ export function initModelLayer(renderer, scene, {
 
         loadAllModels().then(loadedModels => {
             models = loadedModels;
+            let handled = false;
             models.forEach(model => {
+                console.log("debug", handled);
+                //if (handled) return;
+                handled = true;
                 model.visible = false;
-                let copyModel = model.clone();
+                knotClippingGroup.add(model);
+            });
+            if (models.length > 0) {
+
+                const model = models[0];
+
+                model.visible = false;
+
+                copyModel = model.clone();
                 copyModel.visible = true;
-                copyModel.position.z = -1;
-                scene.add(copyModel);
+                copyModel.scale.x = 0.002;
+                copyModel.scale.y = 0.002;
+                copyModel.scale.z = 0.002;
+                copyModel.position.set(0.2, 1, 1);
+
+                knotClippingGroup2.add(copyModel);
+
                 const copyParams = {
+                    // Position
                     x: copyModel.position.x,
                     y: copyModel.position.y,
-                    z: copyModel.position.z
+                    z: copyModel.position.z,
+
+                    // Scale
+                    scaleX: copyModel.scale.x,
+                    scaleY: copyModel.scale.y,
+                    scaleZ: copyModel.scale.z,
+
+                    // Rotation (in degrees for GUI)
+                    rotX: THREE.MathUtils.radToDeg(copyModel.rotation.x),
+                    rotY: THREE.MathUtils.radToDeg(copyModel.rotation.y),
+                    rotZ: THREE.MathUtils.radToDeg(copyModel.rotation.z)
                 };
 
-                // Create GUI folder
-                const copyFolder = gui.addFolder('Copy Model Position');
+                const copyFolder = gui.addFolder('Copy Model Transform');
 
-                // X
+                // --- POSITION ---
                 copyFolder.add(copyParams, 'x', -5, 5, 0.01).name('X').onChange(() => {
                     copyModel.position.x = copyParams.x;
                 });
-
-                // Y
                 copyFolder.add(copyParams, 'y', -5, 5, 0.01).name('Y').onChange(() => {
                     copyModel.position.y = copyParams.y;
                 });
-
-                // Z
                 copyFolder.add(copyParams, 'z', -5, 5, 0.01).name('Z').onChange(() => {
                     copyModel.position.z = copyParams.z;
                 });
 
+                // --- SCALE ---
+                copyFolder.add(copyParams, 'scaleX', 0.0001, 0.1, 0.0001).name('Scale X').onChange(() => {
+                    copyModel.scale.x = copyParams.scaleX;
+                });
+                copyFolder.add(copyParams, 'scaleY', 0.0001, 0.1, 0.0001).name('Scale Y').onChange(() => {
+                    copyModel.scale.y = copyParams.scaleY;
+                });
+                copyFolder.add(copyParams, 'scaleZ', 0.0001, 0.1, 0.0001).name('Scale Z').onChange(() => {
+                    copyModel.scale.z = copyParams.scaleZ;
+                });
+
+                // --- ROTATION (degrees)
+                copyFolder.add(copyParams, 'rotX', -180, 180, 0.1).name('Rot X').onChange(() => {
+                    copyModel.rotation.x = THREE.MathUtils.degToRad(copyParams.rotX);
+                });
+                copyFolder.add(copyParams, 'rotY', -180, 180, 0.1).name('Rot Y').onChange(() => {
+                    copyModel.rotation.y = THREE.MathUtils.degToRad(copyParams.rotY);
+                });
+                copyFolder.add(copyParams, 'rotZ', -180, 180, 0.1).name('Rot Z').onChange(() => {
+                    copyModel.rotation.z = THREE.MathUtils.degToRad(copyParams.rotZ);
+                });
+
                 copyFolder.open();
-                knotClippingGroup.add(model);
-            });
+            }
+
         });
         // In your render/animation loop
         async function loadAllVolumes() {
@@ -579,7 +798,19 @@ export function initModelLayer(renderer, scene, {
         // play button
         gui.add(animParams, 'play').name('Play');
 
+        let frameCounter = 0;
+        const MAX_FRAMES = 48;
+
         function animate() {
+
+            /*
+            if (frameCounter === MAX_FRAMES) {
+                renderModelLayer = false; // freeze quad layer
+                console.log('Quad layer frozen');
+            }
+            */
+
+            frameCounter++;
             requestAnimationFrame(animate);
 
             let currentFrame;
@@ -594,25 +825,48 @@ export function initModelLayer(renderer, scene, {
             if (models) {
                 models.forEach((model, i) => {
                     model.visible = (i === currentFrame);
+
+                    /*invCube1Matrix.copy(model.matrixWorld).invert();
+                    
+                    refferencePlane.copy(worldPlane);
+                    
+                    refferencePlane.applyMatrix4(invCube1Matrix);
+                    
+                    // --- 3. Convert plane: cube1 local → cube2 local ---
+                    if (copyModel) {
+                        refferencePlane.applyMatrix4(copyModel.matrixWorld);
+                    }
+                    */
+
+                    invCube1Matrix.copy(copyModel.matrixWorld).invert();
+                    worldPlane.copy(refferencePlane);
+                    worldPlane.applyMatrix4(invCube1Matrix);
+                    worldPlane.applyMatrix4(model.matrixWorld);
+                    
                 });
             }
 
             if (volumes) {
                 volumes.forEach((volume, i) => {
                     volume.visible = (i === currentFrame);
+                    invCube1Matrix.copy(copyModel.matrixWorld).invert();
+                    worldPlane.copy(refferencePlane);
+                    worldPlane.applyMatrix4(invCube1Matrix);
+                    worldPlane.applyMatrix4(model.matrixWorld);
                 });
             }
 
+            //renderer.render(modelScene, modelCamera);
 
-            renderer.render(modelScene, modelCamera);
+            //renderer.setRenderTarget(null);
         }
 
         animate();
 
     
 
-    const layerPosition = new THREE.Vector3(-1.85, 1.7, -2.25);
-    const layerScale = new THREE.Vector2(0.7, 0.5);
+    //const layerPosition = new THREE.Vector3(-1.85, 1.7, -2.25);
+    const layerPosition = new THREE.Vector3(-1.85, 1.7, 0.5);
     const modelLayer = renderer.xr.createQuadLayer(
         layerSize.width*0.22, layerSize.height*0.25,
         layerPosition,
@@ -623,6 +877,33 @@ export function initModelLayer(renderer, scene, {
     
     scene.add(modelLayer);
 
+    const extraLayers = [];
+    const layerWidthWorld = layerSize.width * 0.22;
+    const gap = layerWidthWorld * 1.1; // small spacing between screens
+    for (let i = 0; i < 5; i++) {
+        const pos = new THREE.Vector3(
+            layerPosition.x + (i + 1) * gap, // ⬅️ move right
+            layerPosition.y,
+            layerPosition.z
+        );
+        const layer = renderer.xr.createQuadLayer(
+            layerSize.width * 0.22,
+            layerSize.height * 0.25,
+            pos,
+            new THREE.Quaternion(),
+            layerSize.width * 800,
+            layerSize.height * 800,
+            () => {
+                const layerIndex = i;
+                if (!renderOffscreenLayers[layerIndex]) return;
+                renderer.render(modelScene, modelCamera);
+                renderOffscreenLayers[layerIndex] = false
+            }
+        );
+        scene.add(layer);
+        extraLayers.push(layer);
+    }
+
     return {
         modelLayer,
         modelScene,
@@ -630,7 +911,8 @@ export function initModelLayer(renderer, scene, {
         worldPlane,
         viewPlane,
         helper3D,
-        controls
+        controls,
+        renderOffscreenLayers
     };
 }
 
@@ -644,8 +926,28 @@ function addPlaneGUIControl(plane, gui, camera, controls, name = 'Clipping Plane
     normalY: plane.normal.y,
     normalZ: plane.normal.z,
     constant: plane.constant,
+    offsetBack: 2.0,
+    offsetU: 0.0,
+    offsetV: 1.0
   };
 
+  function buildPlaneBasis(n) {
+    // Pick direction least aligned with n
+    let tangent;
+
+    if (Math.abs(n.x) > Math.abs(n.z)) {
+        tangent = new THREE.Vector3(-n.y, n.x, 0);
+    } else {
+        tangent = new THREE.Vector3(0, -n.z, n.y);
+    }
+
+    tangent.normalize();
+
+    const U = tangent;                // first tangent
+    const V = new THREE.Vector3().crossVectors(n, U).normalize(); // second tangent
+
+    return { U, V };
+  }
   function updatePlane() {
     if (globalVolumeMesh) {
         const n = new THREE.Vector3(params.normalX, params.normalY, params.normalZ);
@@ -670,34 +972,45 @@ function addPlaneGUIControl(plane, gui, camera, controls, name = 'Clipping Plane
         }
 
         if (plane.helper) plane.helper.update(); // optional
-    }
-    /*
-    if (modelCamera) {
-        // normalize the plane normal
-        const n = plane.normal.clone().normalize();
 
-        // position camera a fixed distance away from the plane, opposite to normal
-        const cameraDistance = 3.0; // you can adjust this
-        const planePoint = n.clone().multiplyScalar(-plane.constant);
-        const cameraPosition = planePoint.clone().addScaledVector(n, -cameraDistance);
+        // ========== CAMERA POSITIONING ==========
 
-        modelCamera.position.copy(cameraPosition);
-        modelCamera.lookAt(planePoint);
-        modelCamera.updateMatrixWorld();
+        // point on the plane in world coordinates
+        const planePoint = n.clone().multiplyScalar(params.constant);
 
-        if (controls) {
-            controls.target.copy(planePoint);
-            controls.update();
-        }
-    }
-    */
-    //updateCameraToPlane(camera, plane);
+        // backwards offset (opposite of normal)
+        const back = n.clone().multiplyScalar(params.offsetBack);
+
+        // 3. Offsets in world X and Y
+        const offsetU = new THREE.Vector3(params.offsetU, 0, 0); // sideways
+        const offsetV = new THREE.Vector3(0, params.offsetV, 0); // height
+
+        // 4. New camera position
+        const newCamPos = planePoint.clone()
+            .add(back)
+            .add(offsetU)
+            .add(offsetV);
+
+        modelCamera.position.copy(newCamPos);
+
+        // 5. LookAt target shifted by same offsets
+        const lookTarget = planePoint.clone()
+            .add(offsetU)
+            .add(offsetV);
+
+        modelCamera.lookAt(lookTarget);
+    }    
+    
   }
 
   folder.add(params, 'normalX', -1, 1, 0.01).onChange(updatePlane);
   folder.add(params, 'normalY', -1, 1, 0.01).onChange(updatePlane);
   folder.add(params, 'normalZ', -1, 1, 0.01).onChange(updatePlane);
   folder.add(params, 'constant', -5, 5, 0.01).onChange(updatePlane);
+
+  folder.add(params, 'offsetBack', 0.1, 10, 0.1).onChange(updatePlane);
+  folder.add(params, 'offsetU', -5, 5, 0.1).onChange(updatePlane);
+  folder.add(params, 'offsetV', -5, 5, 0.1).onChange(updatePlane);
 
   folder.open();
 
@@ -761,3 +1074,4 @@ function addThresholdGUIControl(thresholdUniform, gui, name = 'Threshold', min =
 
     folder.open();
 }
+

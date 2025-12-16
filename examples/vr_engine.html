@@ -35,6 +35,14 @@
 			let camera, scene, renderer;
 			let reflector;
 			let stats, statsMesh;
+			const normal = new THREE.Vector3();
+			const point  = new THREE.Vector3();
+			let quad;
+			let localPlane;
+			const planeForCube2 = new THREE.Plane();
+			const invCube1Matrix = new THREE.Matrix4();
+
+			let cube, secondCube;
 
 			const parameters = {
 				radius: 0.6,
@@ -76,6 +84,7 @@
 				renderer.xr.enabled = true;
 				renderer.toneMapping = THREE.ACESFilmicToneMapping;
 				renderer.toneMappingExposure = 1;
+				renderer.localClippingEnabled = true;
 				document.body.appendChild( renderer.domElement );
 
 				document.body.appendChild( VRButton.createButton( renderer ) );
@@ -88,8 +97,73 @@
 				geometry.setFromPoints( [ new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, - 5 ) ] );
 
 				const controller1 = renderer.xr.getController( 0 );
-				controller1.add( new THREE.Line( geometry ) );
-				scene.add( controller1 );
+				// Quad geometry (width, height)
+				const scanWidth  = 0.08;
+				const scanHeight = 0.12;
+				const quadGeometry = new THREE.PlaneGeometry(scanWidth, scanHeight);
+
+				// Simple unlit material (good for XR controllers)
+				const quadMaterial = new THREE.MeshBasicMaterial({
+					color: 0x66ffcc,
+					transparent: true,
+					opacity: 0.25,
+					blending: THREE.AdditiveBlending,
+					depthWrite: false,
+					side: THREE.DoubleSide
+				});
+
+				quad = new THREE.Mesh(quadGeometry, quadMaterial);
+
+				// Optional: move it forward so it’s visible
+				quad.position.z = -0.08;
+				quad.position.y = -scanHeight * 0.5;
+				quad.rotation.set(-Math.PI / 2, 0, 0);
+
+				controller1.add( quad );
+				scene.add(controller1);
+
+				localPlane = new THREE.Plane(
+					new THREE.Vector3(0, -1, 0), // normal
+					3                            // constant
+				);
+
+				const geomCube = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+
+				const material = new THREE.MeshPhongMaterial({
+					color: 0x80ee10,
+					shininess: 100,
+					side: THREE.DoubleSide,
+
+					// ***** Clipping setup (material): *****
+					clippingPlanes: [ localPlane ],
+					clipShadows: true,
+
+					alphaToCoverage: true
+				});
+
+				cube = new THREE.Mesh(geomCube, material);
+				cube.position.set(0.3, 1.2, -1);
+
+				scene.add(cube);
+
+				const material2 = new THREE.MeshPhongMaterial({
+					color: 0x80ee10,
+					shininess: 100,
+					side: THREE.DoubleSide,
+
+					// ***** Clipping setup (material): *****
+					clippingPlanes: [ planeForCube2 ],
+					clipShadows: true,
+
+					alphaToCoverage: true
+				});
+
+				secondCube = new THREE.Mesh(geomCube, material2);
+
+				// Copy world position from the first cube
+				secondCube.position.copy(cube.position);
+
+				scene.add(secondCube);
 
 				const controller2 = renderer.xr.getController( 1 );
 				controller2.add( new THREE.Line( geometry ) );
@@ -138,6 +212,61 @@
 
 				initFBX(scene, 'meshes/fbx/reduced_ultrasound_machine.fbx');
 
+				const guiHelper = new GUI();
+				const posFolder = gui.addFolder('Cube Position');
+
+				posFolder.add(cube.position, 'x', -2, 2, 0.01).name('X');
+				posFolder.add(cube.position, 'y',  0, 3, 0.01).name('Y');
+				posFolder.add(cube.position, 'z', -2, 2, 0.01).name('Z');
+
+				posFolder.open();
+
+				const rotFolder = gui.addFolder('Cube Rotation');
+
+				const rotation = {
+					x: THREE.MathUtils.radToDeg(cube.rotation.x),
+					y: THREE.MathUtils.radToDeg(cube.rotation.y),
+					z: THREE.MathUtils.radToDeg(cube.rotation.z)
+				};
+
+				rotFolder.add(rotation, 'x', -180, 180, 1).name('Rot X').onChange(v => {
+					cube.rotation.x = THREE.MathUtils.degToRad(v);
+				});
+				rotFolder.add(rotation, 'y', -180, 180, 1).name('Rot Y').onChange(v => {
+					cube.rotation.y = THREE.MathUtils.degToRad(v);
+				});
+				rotFolder.add(rotation, 'z', -180, 180, 1).name('Rot Z').onChange(v => {
+					cube.rotation.z = THREE.MathUtils.degToRad(v);
+				});
+
+				rotFolder.open();
+
+				const scaleFolder = gui.addFolder('Cube Scale');
+
+				scaleFolder.add(cube.scale, 'x', 0.1, 3, 0.01).name('Scale X');
+				scaleFolder.add(cube.scale, 'y', 0.1, 3, 0.01).name('Scale Y');
+				scaleFolder.add(cube.scale, 'z', 0.1, 3, 0.01).name('Scale Z');
+
+				scaleFolder.open();
+
+
+				const planeFolder = gui.addFolder('Clipping Plane');
+
+				// Normal
+				planeFolder.add(localPlane.normal, 'x', -1, 1, 0.01).name('Normal X');
+				planeFolder.add(localPlane.normal, 'y', -1, 1, 0.01).name('Normal Y');
+				planeFolder.add(localPlane.normal, 'z', -1, 1, 0.01).name('Normal Z');
+
+				// Constant (offset)
+				planeFolder.add(localPlane, 'constant', -10, 10, 0.01).name('Constant');
+
+				// Keep normal normalized
+				planeFolder.onChange(() => {
+					localPlane.normal.normalize();
+				});
+
+				planeFolder.open();
+
 			}
 
 			function onWindowResize() {
@@ -150,6 +279,22 @@
 			}
 
 			function animate() {
+				quad.getWorldPosition(point);
+
+				quad.getWorldDirection(normal);
+				normal.negate();
+
+				localPlane.setFromNormalAndCoplanarPoint(normal, point);
+
+				// --- 2. Convert plane: world → cube1 local ---
+				invCube1Matrix.copy(cube.matrixWorld).invert();
+
+				planeForCube2.copy(localPlane);
+				planeForCube2.applyMatrix4(invCube1Matrix);
+
+
+				// --- 3. Convert plane: cube1 local → cube2 local ---
+				planeForCube2.applyMatrix4(secondCube.matrixWorld);
 
 
 				renderer.render( scene, camera );

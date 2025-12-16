@@ -17,7 +17,7 @@ export async function loadFBX(scene, gui, assetPath) {
                         child.receiveShadow = true;
                     }
                 });
-                group.position.set(-1, -1, -1);
+                group.position.set(-1, -1, 1.8);
                 group.scale.set(0.02, 0.02, 0.02);
                 scene.add(group);
                 if (gui) {

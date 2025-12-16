@@ -41,6 +41,8 @@ let clippingWorldPlane = null;
 let clippingViewPlane = null;
 let helperVolume;
 let sphereControls;
+let nextLayerIndex = 0;
+let globalRenderOffscreenLayers;
 
 let volMesh = null;
 
@@ -89,6 +91,54 @@ function init() {
 
     camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 10 );
     camera.position.set( 0, 1.6, 3 );
+    // Set position
+    /*camera.position.set(0, 3, 1);
+
+    // Set rotation in degrees
+    camera.rotation.set(
+        THREE.MathUtils.degToRad(-90), // X
+        THREE.MathUtils.degToRad(0),   // Y
+        THREE.MathUtils.degToRad(0)    // Z
+    );
+    */
+    //0 3 1, -90 0 0
+    // Camera parameters for GUI
+    const cameraParams = {
+        posX: camera.position.x,
+        posY: camera.position.y,
+        posZ: camera.position.z,
+        rotX: THREE.MathUtils.radToDeg(camera.rotation.x),
+        rotY: THREE.MathUtils.radToDeg(camera.rotation.y),
+        rotZ: THREE.MathUtils.radToDeg(camera.rotation.z)
+    };
+
+    // Create GUI folder
+    const cameraFolder = gui.addFolder('Camera Transform');
+
+    // --- POSITION ---
+    cameraFolder.add(cameraParams, 'posX', -10, 10, 0.01).name('X').onChange(() => {
+        camera.position.x = cameraParams.posX;
+    });
+    cameraFolder.add(cameraParams, 'posY', -10, 10, 0.01).name('Y').onChange(() => {
+        camera.position.y = cameraParams.posY;
+    });
+    cameraFolder.add(cameraParams, 'posZ', -10, 10, 0.01).name('Z').onChange(() => {
+        camera.position.z = cameraParams.posZ;
+    });
+
+    // --- ROTATION (degrees)
+    cameraFolder.add(cameraParams, 'rotX', -180, 180, 0.1).name('Rot X').onChange(() => {
+        camera.rotation.x = THREE.MathUtils.degToRad(cameraParams.rotX);
+    });
+    cameraFolder.add(cameraParams, 'rotY', -180, 180, 0.1).name('Rot Y').onChange(() => {
+        camera.rotation.y = THREE.MathUtils.degToRad(cameraParams.rotY);
+    });
+    cameraFolder.add(cameraParams, 'rotZ', -180, 180, 0.1).name('Rot Z').onChange(() => {
+        camera.rotation.z = THREE.MathUtils.degToRad(cameraParams.rotZ);
+    });
+
+    cameraFolder.open();
+
     //camera.position.set( 0, 0, 3 );
 
     
@@ -147,6 +197,7 @@ function init() {
     renderer.setAnimationLoop( render );
     renderer.xr.enabled = true;
     document.body.appendChild( renderer.domElement );
+    //renderer.inspector = new Inspector(); 
 
     //
 
@@ -276,7 +327,7 @@ function init() {
     intGroup.listenToXRControllerEvents(controller2);
     scene.add(intGroup);
 
-    const { modelLayer, modelScene, modelCamera, worldPlane, viewPlane, helper3D, controls, guiGroup} = initModelLayer(renderer, scene, {
+    const { modelLayer, modelScene, modelCamera, worldPlane, viewPlane, helper3D, controls, guiGroup, renderOffscreenLayers} = initModelLayer(renderer, scene, {
         modelUrl: 'meshes/Frame01/MeshesZ0.obj',
         position: new THREE.Vector3(-1.5, 1.5, -1.5),
         layerSize: { width: 3, height: 2 },
@@ -292,6 +343,7 @@ function init() {
     clippingViewPlane = viewPlane;
     helperVolume = helper3D;
     globalControls = controls;
+    globalRenderOffscreenLayers = renderOffscreenLayers;
 
     /*sphereControls = new SphericalPlaneControls(worldPlane, {
         center: new THREE.Vector3(0, 0, 0),
@@ -479,7 +531,7 @@ function render() {
     const currentPos = new THREE.Vector3();
     controller1.getWorldPosition(currentPos);
 
-    if (hasPrev) {
+    /*if (hasPrev) {
         const delta = new THREE.Vector3().subVectors(currentPos, prevControllerPos);
 
         // Apply sensitivity scale
@@ -490,11 +542,13 @@ function render() {
             globalControls._rotateUp(delta.y * sensitivity);
             globalControls.update();
         }
+        
     }
+    */
 
     // Always update previous position
-    prevControllerPos.copy(currentPos);
-    hasPrev = true;
+    //prevControllerPos.copy(currentPos);
+    //hasPrev = true;
 
     //==controllers handle
     // === Handle A/B button presses on controller1 ===
@@ -507,9 +561,14 @@ function render() {
                 const bPressed = gp.buttons[5]?.pressed;
 
                 if (aPressed) {
-                    console.log("🅰️ A button is pressed");
-                    sphere.material.color.set('blue');
-                    clippingWorldPlane.constant -= 0.01; // Decrease clipping plane
+                    if (nextLayerIndex >= globalRenderOffscreenLayers.length) {
+                        console.log('All layers already enabled');
+                        return;
+                    }
+
+                    globalRenderOffscreenLayers[nextLayerIndex] = true;
+                    console.log(`Layer ${nextLayerIndex + 1} enabled`);
+                    nextLayerIndex++;
                 } else if (bPressed) {
                     console.log("🅱️ B button is pressed");
                     sphere.material.color.set('yellow');

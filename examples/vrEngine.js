@@ -21,14 +21,6 @@ export function setupVRGUI(scene, renderer, camera, controller1, controller2, pa
   
   // GUI setup
   const gui = new GUI({ width: 300 });
-  gui.add(parameters, 'radius', 0.0, 1.0).onChange(onChange);
-  gui.add(parameters, 'tube', 0.0, 1.0).onChange(onChange);
-  gui.add(parameters, 'tubularSegments', 10, 150, 1).onChange(onChange);
-  gui.add(parameters, 'radialSegments', 2, 20, 1).onChange(onChange);
-  gui.add(parameters, 'p', 1, 10, 1).onChange(onChange);
-  gui.add(parameters, 'q', 0, 10, 1).onChange(onChange);
-  gui.add(parameters, 'thickness', 0, 1).onChange(onThicknessChange);
-  gui.domElement.style.visibility = 'hidden';
 
   // Interactive group for VR controllers
   const group = new InteractiveGroup();
@@ -93,6 +85,7 @@ export async function initFBX(scene, path) {
     };
 
     // Create GUI
+    /*
     const gui = new GUI({ width: 250 });
     gui.domElement.style.position = 'absolute';
     gui.domElement.style.top = '10px';
@@ -104,6 +97,7 @@ export async function initFBX(scene, path) {
     gui.add(params, 'posZ', -10, 10, 0.01).name('Position Z').onChange(v => object.position.z = v);
 
     gui.add(params, 'scale', 0.001, 2, 0.001).name('Scale').onChange(v => object.scale.set(v, v, v));
+    */
     
     return object;
   } catch (err) {
