@@ -24,12 +24,18 @@ let renderModelLayer = true;
 const dpr = window.devicePixelRatio;
 
 const invCube1Matrix = new THREE.Matrix4();
+let sampleModel;
 let copyModel;
 const renderOffscreenLayers = [false, false, false, false, false];
 
 let nextLayerIndex = 0;
 
-export function initModelLayer(renderer, scene, {
+let wMatrix1;
+let wMatrix2;
+
+export function initModelLayer(
+  gui,
+  renderer, scene, {
   modelUrl,
   volumePath = 'volumes/Frame01/Volume.downsampled.raw',
   volumeDimensions = { x: 240, y: 299, z: 282 },
@@ -70,6 +76,7 @@ export function initModelLayer(renderer, scene, {
 
     modelScene.add( globalClippingGroup );
     globalClippingGroup.add( knotClippingGroup );
+
     //Refference clipping plane
     const globalClippingGroup2 = new THREE.ClippingGroup();
     globalClippingGroup2.clippingPlanes = [];
@@ -97,7 +104,7 @@ export function initModelLayer(renderer, scene, {
     modelScene.add(light2);
 
     // GUI
-    const gui = new GUI({ width: 250 });
+    //const gui = new GUI({ width: 250 });
 
     const camFolder = gui.addFolder('Model Camera');
     camFolder.add(modelCamera.position, 'x', -50, 50, 0.1).name('posX');
@@ -327,6 +334,8 @@ export function initModelLayer(renderer, scene, {
                     child.material = cherryMaterial;
                 }
                 });
+                wMatrix1 = model.matrixWorld;
+                console.log(wMatrix1);
 
                 resolve(model);
             },
@@ -340,7 +349,7 @@ export function initModelLayer(renderer, scene, {
         const planeNormal = uniform(worldPlane.normal);
         const planeConstant = uniform(worldPlane.constant);
 
-        addPlaneGUIControl(worldPlane, gui, modelCamera, controls, 'Local Clipping Plane', planeNormal, planeConstant);
+        addPlaneGUIControl(refferencePlane, gui, modelCamera, controls, 'Local Clipping Plane', planeNormal, planeConstant);
         async function loadVolume(volumePathUrl) {
             const dimX = volumeDimensions.x;
             const dimY = volumeDimensions.y;
@@ -687,15 +696,16 @@ export function initModelLayer(renderer, scene, {
             if (models.length > 0) {
 
                 const model = models[0];
+                sampleModel = model;
 
-                model.visible = false;
+                model.visible = true;
 
                 copyModel = model.clone();
                 copyModel.visible = true;
-                copyModel.scale.x = 0.002;
-                copyModel.scale.y = 0.002;
-                copyModel.scale.z = 0.002;
-                copyModel.position.set(0.2, 1, 1);
+                copyModel.scale.x = 0.001;
+                copyModel.scale.y = 0.001;
+                copyModel.scale.z = 0.001;
+                copyModel.position.set(0.5, 1.2, -0.55);
 
                 knotClippingGroup2.add(copyModel);
 
@@ -752,6 +762,8 @@ export function initModelLayer(renderer, scene, {
                 });
 
                 copyFolder.open();
+
+                wMatrix2 = copyModel.matrixWorld;
             }
 
         });
@@ -776,9 +788,12 @@ export function initModelLayer(renderer, scene, {
             return volumes;
         }
         let volumes;
-        loadAllVolumes().then(loadedVolumes => {
+        
+        /*loadAllVolumes().then(loadedVolumes => {
             volumes = loadedVolumes;
         });
+        */
+        
 
         // state
         let playAnimation = true;
@@ -800,50 +815,25 @@ export function initModelLayer(renderer, scene, {
 
         let frameCounter = 0;
         const MAX_FRAMES = 48;
-
+        animParams.frame = 0;
         function animate() {
-
-            /*
-            if (frameCounter === MAX_FRAMES) {
-                renderModelLayer = false; // freeze quad layer
-                console.log('Quad layer frozen');
-            }
-            */
-
-            frameCounter++;
-            requestAnimationFrame(animate);
-
-            let currentFrame;
-            if (playAnimation) {
-                const elapsed = clock.getElapsedTime(); 
-                currentFrame = Math.floor(elapsed) % frameCount;
-                animParams.frame = currentFrame; // keep slider in sync
-            } else {
-                currentFrame = manualFrame;
-            }
-
+            //requestAnimationFrame(animate);
+            console.log("hello?");
+            let currentFrame = animParams.frame;
             if (models) {
+                console.log("hello2?", currentFrame);
+                console.log(animParams);
+                console.log("HAAAAAAAAAAAAAAAAAAA");
                 models.forEach((model, i) => {
                     model.visible = (i === currentFrame);
+                    if(copyModel) {
+                        console.log("Copy model");
+                        invCube1Matrix.copy(copyModel.matrixWorld).invert();
+                        worldPlane.copy(refferencePlane);
+                        worldPlane.applyMatrix4(invCube1Matrix);
+                        worldPlane.applyMatrix4(model.matrixWorld);
 
-                    /*invCube1Matrix.copy(model.matrixWorld).invert();
-                    
-                    refferencePlane.copy(worldPlane);
-                    
-                    refferencePlane.applyMatrix4(invCube1Matrix);
-                    
-                    // --- 3. Convert plane: cube1 local → cube2 local ---
-                    if (copyModel) {
-                        refferencePlane.applyMatrix4(copyModel.matrixWorld);
-                    }
-                    */
-
-                    /*invCube1Matrix.copy(copyModel.matrixWorld).invert();
-                    worldPlane.copy(refferencePlane);
-                    worldPlane.applyMatrix4(invCube1Matrix);
-                    worldPlane.applyMatrix4(model.matrixWorld);
-                    */
-                    
+                    }        
                 });
             }
 
@@ -858,13 +848,13 @@ export function initModelLayer(renderer, scene, {
                     */
                 });
             }
-
-            //renderer.render(modelScene, modelCamera);
-
-            //renderer.setRenderTarget(null);
         }
 
         animate();
+
+    function getModels() {
+        return sampleModel, copyModel;
+    }
 
     
 
@@ -883,13 +873,14 @@ export function initModelLayer(renderer, scene, {
     const extraLayers = [];
     const layerWidthWorld = layerSize.width * 0.11;
     const gap = layerWidthWorld * 1; // small spacing between screens
+    
     for (let i = 0; i < 5; i++) {
         const pos = new THREE.Vector3(
             layerPosition.x + (i + 1) * gap, // ⬅️ move right
             layerPosition.y,
             layerPosition.z
         );
-        /*
+        
         const layer = renderer.xr.createQuadLayer(
             layerSize.width * 0.11,
             layerSize.height * 0.12,
@@ -907,14 +898,23 @@ export function initModelLayer(renderer, scene, {
         
         scene.add(layer);
         extraLayers.push(layer);
-        */
+        
     }
+    
 
     return {
+        getModels,
+        wMatrix1,
+        wMatrix2,
+        worldPlane,
+        refferencePlane,
+        animate,
+        models,
+        animParams,
+        threshold,
         modelLayer,
         modelScene,
         modelCamera,
-        worldPlane,
         viewPlane,
         helper3D,
         controls,
@@ -924,7 +924,7 @@ export function initModelLayer(renderer, scene, {
 
 function addPlaneGUIControl(plane, gui, camera, controls, name = 'Clipping Plane', planeNormal, planeConstant) {
   const folder = gui.addFolder(name);
-  console.log("here");
+  console.log("here!!!!!!!!!!!!!!!!!");
 
 
   const params = {
@@ -955,7 +955,8 @@ function addPlaneGUIControl(plane, gui, camera, controls, name = 'Clipping Plane
     return { U, V };
   }
   function updatePlane() {
-    if (globalVolumeMesh) {
+
+    //if (globalVolumeMesh) {
         const n = new THREE.Vector3(params.normalX, params.normalY, params.normalZ);
         if (n.lengthSq() === 0) return; // avoid zero-length normals
 
@@ -964,21 +965,8 @@ function addPlaneGUIControl(plane, gui, camera, controls, name = 'Clipping Plane
         planeNormal.value = n;
         plane.constant = params.constant;
         planeConstant.value = params.constant;
-        updatePlaneForMesh(globalVolumeMesh, worldPlane, planeNormal, planeConstant)
+        //updatePlaneForMesh(globalVolumeMesh, worldPlane, planeNormal, planeConstant)
         console.log("here");
-
-        // Check if camera is behind the plane
-        const distance = plane.distanceToPoint(camera.position);
-
-        console.log("Dist:", params.constant);
-        if (distance > 0) {
-            // Flip the plane to face the camera
-            //plane.normal.negate();
-            //plane.constant *= -1;
-        }
-
-        if (plane.helper) plane.helper.update(); // optional
-
         // ========== CAMERA POSITIONING ==========
 
         // point on the plane in world coordinates
@@ -997,22 +985,22 @@ function addPlaneGUIControl(plane, gui, camera, controls, name = 'Clipping Plane
             .add(offsetU)
             .add(offsetV);
 
-        modelCamera.position.copy(newCamPos);
+        //modelCamera.position.copy(newCamPos);
 
         // 5. LookAt target shifted by same offsets
         const lookTarget = planePoint.clone()
             .add(offsetU)
             .add(offsetV);
 
-        modelCamera.lookAt(lookTarget);
-    }    
+        //modelCamera.lookAt(lookTarget);
+    //}    
     
   }
 
   folder.add(params, 'normalX', -1, 1, 0.01).onChange(updatePlane);
   folder.add(params, 'normalY', -1, 1, 0.01).onChange(updatePlane);
   folder.add(params, 'normalZ', -1, 1, 0.01).onChange(updatePlane);
-  folder.add(params, 'constant', -5, 5, 0.01).onChange(updatePlane);
+  folder.add(params, 'constant', -1, 1, 0.001).onChange(updatePlane);
 
   folder.add(params, 'offsetBack', 0.1, 10, 0.1).onChange(updatePlane);
   folder.add(params, 'offsetU', -5, 5, 0.1).onChange(updatePlane);

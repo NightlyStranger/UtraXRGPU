@@ -105,3 +105,71 @@ export async function initFBX(scene, path) {
     throw err;
   }
 }
+
+export function createHeartViewUI(scene, group, state, threshold, animParams, animate) {
+    // ---------- UI logic ----------
+    const params = {
+        threshold: threshold.value,
+        animFrame: animParams.frame,
+
+        longAxis: () => selectTask(0),
+        shortAxis: () => selectTask(1),
+        threeChamber: () => selectTask(2),
+        fourChamber: () => selectTask(3),
+        twoChamber: () => selectTask(4),
+    };
+
+    // ---------- GUI ----------
+    const gui = new GUI({ width: 320 });
+
+    /*
+    gui.add(params, 'threshold', 0.0, 1.0, 0.01)
+        .name('Threshold')
+        .onChange(v => {
+            threshold.value = v;
+            console.log('Threshold changed:', v);
+    });
+    */
+
+    gui.add(animParams, 'frame', 0, 3, 1)
+        .name('Animation frame')
+        .onChange(v => {
+            animParams.frame = v;
+            console.log(animParams);
+            animate();
+            console.log('Animation frame changed:', v);
+    });
+
+    const buttons = [
+        gui.add(params, 'longAxis').name('Long Axis'),
+        gui.add(params, 'shortAxis').name('Short Axis'),
+        gui.add(params, 'threeChamber').name('Three-Chamber View'),
+        gui.add(params, 'fourChamber').name('Four-Chamber View'),
+        gui.add(params, 'twoChamber').name('Two-Chamber View'),
+    ];
+    function clearHighlight() {
+        buttons.forEach(b => {
+            b.domElement.style.background = '';
+        });
+    }
+
+    function selectTask(index) {
+        state.taskIndex = index;
+        console.log('Task selected:', index);
+
+        clearHighlight();
+        buttons[index].domElement.style.background = '#2fa1d6';
+    }
+
+    // ---------- HTMLMesh ----------
+    const guiMesh = new HTMLMesh(gui.domElement);
+    guiMesh.position.set(-0.7, 1.5, -0.6);
+    guiMesh.rotation.y = Math.PI / 6;
+    guiMesh.scale.setScalar(2.0);
+
+    // ---------- Attach ----------
+    group.add(guiMesh);
+    //scene.add(group);
+
+    return guiMesh;
+}

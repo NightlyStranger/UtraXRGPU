@@ -13,13 +13,19 @@ import { loadFBX } from './fbxLoader.js';
 import {createGreenBox } from './dvrRendring.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SphericalPlaneControls } from './SphericalPlaneControls.js';
-import { setupVRGUI, updateStats, initFBX  } from './vrEngine.js';
+import { setupVRGUI, updateStats, initFBX, createHeartViewUI  } from './vrEngine.js';
 import { InteractiveGroup } from 'three/addons/interactive/InteractiveGroup.js';
 import { addQuad } from './intersectionHelper.js';
 
 let camera, scene, renderer;
 let controller1, controller2;
 let controllerGrip1, controllerGrip2;
+let gModelsFunction;
+
+const heartUIState = {
+    threshold: 0.5,
+    taskIndex: -1
+};
 
 let room;
 
@@ -28,12 +34,16 @@ const PI2 = Math.PI * 2;
 const tempMatrix = new THREE.Matrix4();
 let raycaster = null;
 
-let horseCamera = null;
-let horseScene = null;
-let horseMixer = null;
-let horseTheta = 0;
-let horseMesh = null;
-const horseRadius = 600;
+let quad;
+const normal = new THREE.Vector3();
+const point  = new THREE.Vector3();
+const invCube1Matrix = new THREE.Matrix4();
+
+let gWorldPlane;
+let gRefferencePlane;
+
+let gWMatrix1;
+let gWMatrix2;
 
 //clipping camera setting
 let clippingCamera = null;
@@ -69,6 +79,8 @@ const gui = new GUI();
 let globalControls;
 let offscreenLayer;
 
+let prevAPressed = false;
+
 init();
 
 function getIntersections( controller ) {
@@ -90,7 +102,7 @@ function init() {
     raycaster = new THREE.Raycaster();
 
     camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 10 );
-    camera.position.set( 0, 1.6, 4.89 );
+    camera.position.set( 0.35, 1.26, 0.75 );
     // Set position
     /*camera.position.set(0, 3, 1);
 
@@ -101,6 +113,7 @@ function init() {
         THREE.MathUtils.degToRad(0)    // Z
     );
     */
+    
     //0 3 1, -90 0 0
     // Camera parameters for GUI
     const cameraParams = {
@@ -116,13 +129,13 @@ function init() {
     const cameraFolder = gui.addFolder('Camera Transform');
 
     // --- POSITION ---
-    cameraFolder.add(cameraParams, 'posX', -10, 10, 0.01).name('X').onChange(() => {
+    cameraFolder.add(cameraParams, 'posX', -1, 3, 0.01).name('X').onChange(() => {
         camera.position.x = cameraParams.posX;
     });
-    cameraFolder.add(cameraParams, 'posY', -10, 10, 0.01).name('Y').onChange(() => {
+    cameraFolder.add(cameraParams, 'posY', -1, 3, 0.01).name('Y').onChange(() => {
         camera.position.y = cameraParams.posY;
     });
-    cameraFolder.add(cameraParams, 'posZ', -10, 10, 0.01).name('Z').onChange(() => {
+    cameraFolder.add(cameraParams, 'posZ', -1, 3, 0.01).name('Z').onChange(() => {
         camera.position.z = cameraParams.posZ;
     });
 
@@ -166,7 +179,7 @@ function init() {
         }
     }
 
-    initFBX();
+    //initFBX();
 
     const sphereGeometry = new THREE.SphereGeometry(0.2, 32, 32);
     const sphereMaterial = new THREE.MeshStandardMaterial({ color: 'red' });
@@ -263,8 +276,31 @@ function init() {
         this.userData.isSelecting = false;
 
     }
+    const scanWidth  = 0.08;
+    const scanHeight = 0.12;
+    const quadGeometry = new THREE.PlaneGeometry(scanWidth, scanHeight);
+
+    // Simple unlit material (good for XR controllers)
+    const quadMaterial = new THREE.MeshBasicMaterial({
+        color: 0x66ffcc,
+        transparent: true,
+        opacity: 0.25,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide
+    });
+
+    quad = new THREE.Mesh(quadGeometry, quadMaterial);
+
+    // Optional: move it forward so it’s visible
+    quad.position.z = -0.08;
+    quad.position.y = -scanHeight * 0.5;
+    quad.rotation.set(-Math.PI / 2, 0, 0);
 
     controller1 = renderer.xr.getController( 0 );
+    // Quad geometry (width, height)
+    
+    //controller1.add( quad );
     /*
     controller1.addEventListener( 'selectstart', onSelectStart );
     controller1.addEventListener( 'selectend', onSelectEnd );
@@ -284,6 +320,7 @@ function init() {
     scene.add( controller1 );
 
     controller2 = renderer.xr.getController( 1 );
+    controller2.add(quad);
     /*
     controller2.addEventListener( 'selectstart', onSelectStart );
     controller2.addEventListener( 'selectend', onSelectEnd );
@@ -331,7 +368,27 @@ function init() {
     intGroup.listenToXRControllerEvents(controller2);
     scene.add(intGroup);
 
-    const { modelLayer, modelScene, modelCamera, worldPlane, viewPlane, helper3D, controls, guiGroup, renderOffscreenLayers} = initModelLayer(renderer, scene, {
+    const { 
+        getModels,
+        wMatrix1,
+        wMatrix2,
+        worldPlane,
+        refferencePlane, 
+        animate, 
+        models, 
+        animParams, 
+        threshold, 
+        modelLayer, 
+        modelScene, 
+        modelCamera,
+        viewPlane, 
+        helper3D, 
+        controls, 
+        guiGroup, 
+        renderOffscreenLayers
+    } = initModelLayer(
+        gui,
+        renderer, scene, {
         modelUrl: 'meshes/Frame01/MeshesZ0.obj',
         position: new THREE.Vector3(-1.5, 1.5, -1.5),
         layerSize: { width: 3, height: 2 },
@@ -340,6 +397,72 @@ function init() {
             console.log('Model loaded:', model);
         }
     });
+    gModelsFunction = animate;
+    gWMatrix1 = new THREE.Matrix4();
+
+    gWMatrix1.set(
+        4.440892098500626e-18,  1.224646799147353e-18,  0.02,  0,
+    -1.232595164407831e-34,  0.02, -1.224646799147353e-18,  0,
+    -0.02,                  1.232595164407831e-34,  4.440892098500626e-18,  0,
+        0,                      0,                      0,  1
+    );
+    gWMatrix2 = new THREE.Matrix4();
+    const m = new THREE.Matrix4().set(
+        2.220446049250313e-19,  6.123233995736765e-20,  0.001,  0,
+    -6.162975822039155e-36,  0.001,                -6.123233995736765e-20,  0,
+    -0.001,                 6.162975822039155e-36,  2.220446049250313e-19,  0,
+        0.5,                   1.2,                  -0.55,                 1
+    );
+    gWorldPlane = worldPlane;
+    gRefferencePlane = refferencePlane;
+    const planeParams = {
+        nx: gRefferencePlane.normal.x,
+        ny: gRefferencePlane.normal.y,
+        nz: gRefferencePlane.normal.z,
+        constant: gRefferencePlane.constant,
+    };
+
+    function updatePlaneFromGUI() {
+        gRefferencePlane.normal.set(
+            planeParams.nx,
+            planeParams.ny,
+            planeParams.nz
+        );
+
+        // Always normalize normals
+        gRefferencePlane.normal.normalize();
+
+        gRefferencePlane.constant = planeParams.constant;
+
+        console.log('Plane updated:', gRefferencePlane);
+    }
+
+    const planeFolder = gui.addFolder('Reference Plane');
+
+    // Normal
+    planeFolder.add(planeParams, 'nx', -1, 1, 0.001)
+        .name('Normal X')
+        .onChange(updatePlaneFromGUI);
+
+    planeFolder.add(planeParams, 'ny', -1, 1, 0.001)
+        .name('Normal Y')
+        .onChange(updatePlaneFromGUI);
+
+    planeFolder.add(planeParams, 'nz', -1, 1, 0.001)
+        .name('Normal Z')
+        .onChange(updatePlaneFromGUI);
+
+    // Constant
+    planeFolder.add(planeParams, 'constant', -5, 5, 0.001)
+        .name('Constant')
+        .onChange(updatePlaneFromGUI);
+
+    planeFolder.open();
+
+
+    animParams.frame = 0;
+    animate();
+    createHeartViewUI(scene, intGroup, heartUIState, threshold, animParams, animate);
 
     //addQuad(scene);
     clippingCamera = modelCamera;
@@ -348,6 +471,7 @@ function init() {
     helperVolume = helper3D;
     globalControls = controls;
     globalRenderOffscreenLayers = renderOffscreenLayers;
+
 
     /*sphereControls = new SphericalPlaneControls(worldPlane, {
         center: new THREE.Vector3(0, 0, 0),
@@ -532,64 +656,63 @@ function render() {
 
    // Get current controller position
    // Get current position of controller1 in world space
+    gModelsFunction();
     const currentPos = new THREE.Vector3();
     controller1.getWorldPosition(currentPos);
-
-    /*if (hasPrev) {
-        const delta = new THREE.Vector3().subVectors(currentPos, prevControllerPos);
-
-        // Apply sensitivity scale
-        const sensitivity = 10.0;
-
-        if (globalControls) {
-            globalControls._rotateLeft(delta.x * sensitivity);
-            globalControls._rotateUp(delta.y * sensitivity);
-            globalControls.update();
-        }
-        
-    }
-    */
-
-    // Always update previous position
-    //prevControllerPos.copy(currentPos);
-    //hasPrev = true;
-
-    //==controllers handle
-    // === Handle A/B button presses on controller1 ===
-    function isReleased(buttonIndex) {
-        const pressed = gp.buttons[buttonIndex]?.pressed ?? false;
-        const released = prevButtons[buttonIndex] && !pressed;
-        prevButtons[buttonIndex] = pressed;
-        return released;
-    }
     const session = renderer.xr.getSession();
     if (session) {
         for (const source of session.inputSources) {
             const gp = source.gamepad;
             if (gp) {
-                const aPressed = gp.buttons[4]?.pressed;
+                const aPressed = gp.buttons[4]?.pressed ?? false;
                 const bPressed = gp.buttons[5]?.pressed;
-
-                if (aPressed) {
-                    if (nextLayerIndex >= globalRenderOffscreenLayers.length) {
-                        console.log('All layers already enabled');
-                        return;
+                if (!aPressed) {
+                    // A not pressed → disable all layers
+                    for (let i = 0; i < globalRenderOffscreenLayers.length; i++) {
+                        globalRenderOffscreenLayers[i] = false;
                     }
+                } else if (aPressed){
+                    // A pressed → enable only selected task
+                    if (heartUIState.taskIndex >= 0) {
+                        for (let i = 0; i < globalRenderOffscreenLayers.length; i++) {
+                            globalRenderOffscreenLayers[i] = (i === heartUIState.taskIndex);
+                        }
 
-                    globalRenderOffscreenLayers[nextLayerIndex] = true;
-                    console.log(`Layer ${nextLayerIndex + 1} enabled`);
-                    nextLayerIndex++;
-                } else if (bPressed) {
+                        console.log(`Layer ${heartUIState.taskIndex} enabled`);
+                    }
+                }
+                if (bPressed) {                    
+                    quad.getWorldPosition(point);
+                    quad.getWorldDirection(normal);
+                    normal.negate();
+                    gRefferencePlane.setFromNormalAndCoplanarPoint(normal, point);
+                    gModelsFunction();
+                    /*
+                    invCube1Matrix.copy(gWMatrix1).invert();
+                    gWorldPlane.copy(gRefferencePlane);
+                    gWorldPlane.applyMatrix4(invCube1Matrix);
+                    gWorldPlane.applyMatrix4(gWMatrix2);
+                    */
+                } 
+
+                /*
+                if (aPressed) {
+                        globalRenderOffscreenLayers[heartUIState.taskIndex] = true;
+                        console.log(`Layer ${heartUIState.taskIndex} enabled`);
+                    } else if (bPressed) {
                     console.log("🅱️ B button is pressed");
                     sphere.material.color.set('yellow');
                     clippingWorldPlane.constant += 0.01; // Increase clipping plane
                 } else {
                     sphere.material.color.set('red');
                 }
+                prevAPressed = aPressed;
+                */
 
             }
         }
     }
+
     window.addEventListener('keydown', (e) => {
                     if (e.repeat) return; // prevent auto-repeat spam
 

@@ -30,8 +30,9 @@
 
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 			import Stats from 'three/addons/libs/stats.module.js';
-			import { setupVRGUI, updateStats, initFBX  } from './vrEngine.js';
+			import { setupVRGUI, updateStats, initFBX, createHeartViewUI } from './vrEngine.js';
 
+			let globalPressed = false;
 			let camera, scene, renderer;
 			let reflector;
 			let stats, statsMesh;
@@ -43,6 +44,11 @@
 			const invCube1Matrix = new THREE.Matrix4();
 
 			let cube, secondCube;
+
+			const heartUIState = {
+				threshold: 0.5,
+				taskIndex: -1 // 0..4
+			};
 
 			const parameters = {
 				radius: 0.6,
@@ -72,7 +78,7 @@
 					} );
 
 				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 10 );
-				camera.position.set( 0, 1.6, 1 );
+				camera.position.set( 0, 1.6, 1.5 );
 
 				//
 
@@ -135,7 +141,7 @@
 					side: THREE.DoubleSide,
 
 					// ***** Clipping setup (material): *****
-					clippingPlanes: [ localPlane ],
+					//clippingPlanes: [ localPlane ],
 					clipShadows: true,
 
 					alphaToCoverage: true
@@ -152,7 +158,7 @@
 					side: THREE.DoubleSide,
 
 					// ***** Clipping setup (material): *****
-					clippingPlanes: [ planeForCube2 ],
+					//clippingPlanes: [ planeForCube2 ],
 					clipShadows: true,
 
 					alphaToCoverage: true
@@ -210,7 +216,7 @@
 					onThicknessChange
 				);
 
-				initFBX(scene, 'meshes/fbx/reduced_ultrasound_machine.fbx');
+				//initFBX(scene, 'meshes/fbx/reduced_ultrasound_machine.fbx');
 
 				const guiHelper = new GUI();
 				const posFolder = gui.addFolder('Cube Position');
@@ -267,6 +273,13 @@
 
 				planeFolder.open();
 
+				let threshold = 1;
+				const animParams = {
+					frame: 0,
+					play: () => { playAnimation = true; }
+				};
+				createHeartViewUI(scene, group, heartUIState, threshold, animParams);
+
 			}
 
 			function onWindowResize() {
@@ -279,6 +292,24 @@
 			}
 
 			function animate() {
+				const session = renderer.xr.getSession();
+				if (session) {
+					for (const source of session.inputSources) {
+						const gp = source.gamepad;
+						if (gp) {
+							const aPressed = gp.buttons[4]?.pressed ?? false;
+							if (aPressed === true && globalPressed === false){
+								globalPressed = true;
+							}
+							if (aPressed === false) {
+								if (globalPressed === true) {
+									console.log("released");
+									globalPressed = false;
+								}
+							}
+						}
+					}
+				}
 				quad.getWorldPosition(point);
 
 				quad.getWorldDirection(normal);
