@@ -111,6 +111,8 @@ export function createHeartViewUI(scene, group, state, threshold, animParams, an
     const params = {
         threshold: threshold.value,
         animFrame: animParams.frame,
+        cameraMutable: state.cameraMutable,
+        cameraMutableNum: state.cameraMutable ? 1 : 0,
 
         longAxis: () => selectTask(0),
         shortAxis: () => selectTask(1),
@@ -122,23 +124,26 @@ export function createHeartViewUI(scene, group, state, threshold, animParams, an
     // ---------- GUI ----------
     const gui = new GUI({ width: 320 });
 
-    /*
     gui.add(params, 'threshold', 0.0, 1.0, 0.01)
         .name('Threshold')
         .onChange(v => {
             threshold.value = v;
             console.log('Threshold changed:', v);
     });
-    */
 
     gui.add(animParams, 'frame', 0, 3, 1)
         .name('Animation frame')
         .onChange(v => {
             animParams.frame = v;
             console.log(animParams);
-            animate();
+            animate(state.cameraMutable);
             console.log('Animation frame changed:', v);
     });
+    gui.add(params, 'cameraMutableNum', 0, 1, 1)
+      .name('Camera Mutable')
+      .onChange(v => {
+          state.cameraMutable = (v === 1);
+      });
 
     const buttons = [
         gui.add(params, 'longAxis').name('Long Axis'),
@@ -163,8 +168,9 @@ export function createHeartViewUI(scene, group, state, threshold, animParams, an
 
     // ---------- HTMLMesh ----------
     const guiMesh = new HTMLMesh(gui.domElement);
-    guiMesh.position.set(-0.7, 1.5, -0.6);
-    guiMesh.rotation.y = Math.PI / 6;
+    guiMesh.position.set(-0.35, 1.0, -0.2);
+    guiMesh.rotation.x = -Math.PI / 3;
+    guiMesh.rotation.z = 0;
     guiMesh.scale.setScalar(2.0);
 
     // ---------- Attach ----------

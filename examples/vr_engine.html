@@ -47,7 +47,8 @@
 
 			const heartUIState = {
 				threshold: 0.5,
-				taskIndex: -1 // 0..4
+				taskIndex: -1,
+				cameraMutable: true
 			};
 
 			const parameters = {
@@ -216,7 +217,7 @@
 					onThicknessChange
 				);
 
-				//initFBX(scene, 'meshes/fbx/reduced_ultrasound_machine.fbx');
+				initFBX(scene, 'meshes/fbx/reduced_ultrasound_machine.fbx');
 
 				const guiHelper = new GUI();
 				const posFolder = gui.addFolder('Cube Position');
@@ -296,16 +297,17 @@
 				if (session) {
 					for (const source of session.inputSources) {
 						const gp = source.gamepad;
+						const hand = source.handedness;
+
 						if (gp) {
 							const aPressed = gp.buttons[4]?.pressed ?? false;
-							if (aPressed === true && globalPressed === false){
+							if (aPressed === true && hand === "right"){
 								globalPressed = true;
+								console.log("A pressed");
 							}
-							if (aPressed === false) {
-								if (globalPressed === true) {
-									console.log("released");
+							if (aPressed === true	 && hand === "left") {
+									console.log("X pressed");
 									globalPressed = false;
-								}
 							}
 						}
 					}

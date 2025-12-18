@@ -24,7 +24,8 @@ let gModelsFunction;
 
 const heartUIState = {
     threshold: 0.5,
-    taskIndex: -1
+    taskIndex: -1,
+    cameraMutable: false
 };
 
 let room;
@@ -64,22 +65,9 @@ let guiCamera = null;
 let horseLayer = null;
 //let guiLayer = null;
 
-const parameters = {
-    radius: 0.6,
-    tube: 0.2,
-    tubularSegments: 150,
-    radialSegments: 20,
-    p: 2,
-    q: 3,
-    thickness: 0.5,
-    parhaha: 0.5
-};
+
 let sphere;
 const gui = new GUI();
-let globalControls;
-let offscreenLayer;
-
-let prevAPressed = false;
 
 init();
 
@@ -169,7 +157,7 @@ function init() {
             const { object } = await loadFBX(
                 scene,
                 gui,
-                'meshes/fbx/reduced_ultrasound_machine.fbx'
+                'meshes/fbx/reduced_ultrasound_machine_transparent.fbx'
             );
 
             console.log('FBX loaded:', object);
@@ -179,7 +167,7 @@ function init() {
         }
     }
 
-    //initFBX();
+    initFBX();
 
     const sphereGeometry = new THREE.SphereGeometry(0.2, 32, 32);
     const sphereMaterial = new THREE.MeshStandardMaterial({ color: 'red' });
@@ -453,7 +441,7 @@ function init() {
         .onChange(updatePlaneFromGUI);
 
     // Constant
-    planeFolder.add(planeParams, 'constant', -5, 5, 0.001)
+    planeFolder.add(planeParams, 'constant', -1, 1, 0.001)
         .name('Constant')
         .onChange(updatePlaneFromGUI);
 
@@ -461,7 +449,7 @@ function init() {
 
 
     animParams.frame = 0;
-    animate();
+    animate(false);
     createHeartViewUI(scene, intGroup, heartUIState, threshold, animParams, animate);
 
     //addQuad(scene);
@@ -469,7 +457,6 @@ function init() {
     clippingWorldPlane = worldPlane;
     clippingViewPlane = viewPlane;
     helperVolume = helper3D;
-    globalControls = controls;
     globalRenderOffscreenLayers = renderOffscreenLayers;
 
 
@@ -656,7 +643,7 @@ function render() {
 
    // Get current controller position
    // Get current position of controller1 in world space
-    gModelsFunction();
+    //gModelsFunction();
     const currentPos = new THREE.Vector3();
     controller1.getWorldPosition(currentPos);
     const session = renderer.xr.getSession();
@@ -666,7 +653,7 @@ function render() {
             if (gp) {
                 const aPressed = gp.buttons[4]?.pressed ?? false;
                 const bPressed = gp.buttons[5]?.pressed;
-                if (!aPressed) {
+                if (!aPressed ) {
                     // A not pressed → disable all layers
                     for (let i = 0; i < globalRenderOffscreenLayers.length; i++) {
                         globalRenderOffscreenLayers[i] = false;
@@ -681,18 +668,14 @@ function render() {
                         console.log(`Layer ${heartUIState.taskIndex} enabled`);
                     }
                 }
-                if (bPressed) {                    
+                if (bPressed) {    
+                    scene.updateMatrixWorld(true);                
                     quad.getWorldPosition(point);
                     quad.getWorldDirection(normal);
+                    normal.normalize();
                     normal.negate();
                     gRefferencePlane.setFromNormalAndCoplanarPoint(normal, point);
-                    gModelsFunction();
-                    /*
-                    invCube1Matrix.copy(gWMatrix1).invert();
-                    gWorldPlane.copy(gRefferencePlane);
-                    gWorldPlane.applyMatrix4(invCube1Matrix);
-                    gWorldPlane.applyMatrix4(gWMatrix2);
-                    */
+                    gModelsFunction(heartUIState.cameraMutable);
                 } 
 
                 /*
