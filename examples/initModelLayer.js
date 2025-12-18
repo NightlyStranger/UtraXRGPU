@@ -663,7 +663,7 @@ export function initModelLayer(
         async function loadAllVolumes() {
             const volumePromises = [];
 
-            for (let i = 1; i <= 4; i++) {
+            for (let i = 1; i <= 1; i++) {
                 const volumePath = `volumes/Frame${String(i).padStart(2,'0')}/Volume.downsampled.raw`;
                 console.log(volumePath);
                 volumePromises.push(loadVolume(volumePath));
@@ -712,7 +712,7 @@ export function initModelLayer(
         animParams.frame = 0;
         function animate(updateCamera = true) {
             scene.updateMatrixWorld(true);
-            requestAnimationFrame(animate);
+            //requestAnimationFrame(animate);
             let currentFrame = animParams.frame;
             if (models) {
                 models.forEach((model, i) => {

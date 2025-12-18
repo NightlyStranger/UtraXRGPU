@@ -90,7 +90,7 @@ function init() {
     raycaster = new THREE.Raycaster();
 
     camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 10 );
-    camera.position.set( 0.35, 1.26, 0.75 );
+    camera.position.set( 0.0, 1.7, 0.97 );
     // Set position
     /*camera.position.set(0, 3, 1);
 
