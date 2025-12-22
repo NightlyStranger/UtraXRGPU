@@ -499,7 +499,7 @@ export function initModelLayer(
             
             volumeMaterial.colorNode = opaqueRaymarchingTexture({
                 texture: texture3D(texture, null, 0),
-                steps: 128
+                steps: 64
             });
             volumeMaterial.side = THREE.BackSide;
             volumeMaterial.transparent = true;
@@ -663,7 +663,7 @@ export function initModelLayer(
         async function loadAllVolumes() {
             const volumePromises = [];
 
-            for (let i = 1; i <= 1; i++) {
+            for (let i = 1; i <= 3; i++) {
                 const volumePath = `volumes/Frame${String(i).padStart(2,'0')}/Volume.downsampled.raw`;
                 console.log(volumePath);
                 volumePromises.push(loadVolume(volumePath));

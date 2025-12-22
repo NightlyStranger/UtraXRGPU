@@ -13,7 +13,7 @@ import { loadFBX } from './fbxLoader.js';
 import {createGreenBox } from './dvrRendring.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SphericalPlaneControls } from './SphericalPlaneControls.js';
-import { setupVRGUI, updateStats, initFBX, createHeartViewUI  } from './vrEngine.js';
+import { setupVRGUI, updateStats, initFBX, createHeartViewUI, setupStats  } from './vrEngine.js';
 import { InteractiveGroup } from 'three/addons/interactive/InteractiveGroup.js';
 import { addQuad } from './intersectionHelper.js';
 
@@ -364,7 +364,7 @@ function init() {
         refferencePlane, 
         animate, 
         models, 
-        animParams, 
+        animParams,
         threshold, 
         modelLayer, 
         modelScene, 
@@ -450,6 +450,7 @@ function init() {
 
     animParams.frame = 0;
     animate(false);
+    setupStats(intGroup);
     createHeartViewUI(scene, intGroup, heartUIState, threshold, animParams, animate);
 
     //addQuad(scene);
@@ -717,5 +718,6 @@ function render() {
     //sphereControls.update();
 
     renderer.render( scene, camera );
+    updateStats();
 
 }

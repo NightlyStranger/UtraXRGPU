@@ -1,7 +1,7 @@
 cd C:\Users\schoo\Documents\GitHub\UtraXRGPU
 python -m http.server
 Ctrl+F5 - hard refresh
-https://tinyurl.com/uxrProt
+https://tinyurl.com/uxrProt1
 
 ngrok
 Set-ExecutionPolicy RemoteSigned -Scope CurrentUser

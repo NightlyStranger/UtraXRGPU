@@ -51,6 +51,26 @@ export function setupVRGUI(scene, renderer, camera, controller1, controller2, pa
   return { gui, stats, statsMesh, group };
 }
 
+export function setupStats(group) {
+  
+  // GUI setup
+  const gui = new GUI({ width: 300 });
+
+  // Stats setup
+  stats = new Stats();
+  stats.dom.style.width = '80px';
+  stats.dom.style.height = '48px';
+  document.body.appendChild(stats.dom);
+
+  statsMesh = new HTMLMesh(stats.dom);
+  statsMesh.position.set(-0.75, 1.5, -0.6);
+  statsMesh.rotation.y = Math.PI / 4;
+  statsMesh.scale.setScalar(2.5);
+  group.add(statsMesh);
+
+  return { gui, stats, statsMesh, group };
+}
+
 /**
  * Call this inside your render loop to update stats.
  */
@@ -120,7 +140,6 @@ export function createHeartViewUI(scene, group, state, threshold, animParams, an
         fourChamber: () => selectTask(3),
         twoChamber: () => selectTask(4),
     };
-
     // ---------- GUI ----------
     const gui = new GUI({ width: 320 });
 
@@ -165,6 +184,7 @@ export function createHeartViewUI(scene, group, state, threshold, animParams, an
         clearHighlight();
         buttons[index].domElement.style.background = '#2fa1d6';
     }
+    selectTask(0);
 
     // ---------- HTMLMesh ----------
     const guiMesh = new HTMLMesh(gui.domElement);
