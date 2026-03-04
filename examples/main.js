@@ -212,6 +212,39 @@ function init() {
     renderer.setAnimationLoop( render );
     renderer.xr.enabled = true;
     document.body.appendChild( renderer.domElement );
+
+    // 1. Создаем объект параметров
+    const resolutionParams = {
+        resolutionScale: 0.5 // Ваше текущее значение
+    };
+
+    // 2. Добавляем в GUI
+    const settingsFolder = gui.addFolder('Performance');
+
+    settingsFolder.add(resolutionParams, 'resolutionScale', 0.125, 2.0, 0.125)
+        .name('Internal Res')
+        .onChange((value) => {
+            // Умножаем на системный pixelRatio для корректного отображения
+            renderer.setPixelRatio(value * window.devicePixelRatio);
+            
+            // В некоторых версиях Three.js может потребоваться повторный setSize 
+            // для принудительного обновления буферов, но обычно достаточно setPixelRatio
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            
+            console.log(`Current Pixel Ratio: ${value * window.devicePixelRatio}`);
+        });
+
+    // 3. Кнопки быстрого переключения (в 4 раза ниже/выше)
+    settingsFolder.add({ low: () => updateRes(0.125) }, 'low').name('Res x0.25 (Very Low)');
+    settingsFolder.add({ high: () => updateRes(2.0) }, 'high').name('Res x4.0 (Ultra High)');
+
+    function updateRes(value) {
+        resolutionParams.resolutionScale = value;
+        renderer.setPixelRatio(value * window.devicePixelRatio);
+        gui.updateDisplay(); // Обновляем ползунок в GUI
+    }
+
+    settingsFolder.open();
     //renderer.inspector = new Inspector(); 
 
     //

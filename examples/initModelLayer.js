@@ -712,7 +712,7 @@ export function initModelLayer(
         animParams.frame = 0;
         function animate(updateCamera = true) {
             scene.updateMatrixWorld(true);
-            //requestAnimationFrame(animate);
+            requestAnimationFrame(animate);
             let currentFrame = animParams.frame;
             if (models) {
                 models.forEach((model, i) => {
@@ -815,7 +815,7 @@ export function initModelLayer(
         layerSize.width*0.11, layerSize.height*0.12,
         layerPosition,
         new THREE.Quaternion(),
-        window.innerWidth / 4, window.innerHeight / 4,
+        window.innerWidth / 2, window.innerHeight / 2   ,
         () => renderer.render(modelScene, modelCamera)
     );
     modelLayer.position.set(-0.43, 1.36, -0.65);
