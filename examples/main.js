@@ -161,13 +161,27 @@ function init() {
             );
 
             console.log('FBX loaded:', object);
+            
+            const params = {
+            showMesh: object.visible
+        };
+
+        const meshFolder = gui.addFolder('FBX Model');
+        
+        meshFolder.add(params, 'showMesh')
+            .name('Display Model')
+            .onChange((value) => {
+                object.visible = value;
+            });
+
+        meshFolder.open();
 
         } catch (err) {
             console.error('Error loading FBX:', err);
         }
     }
 
-    //initFBX();
+    initFBX();
 
     const sphereGeometry = new THREE.SphereGeometry(0.2, 32, 32);
     const sphereMaterial = new THREE.MeshStandardMaterial({ color: 'red' });
