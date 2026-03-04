@@ -167,7 +167,7 @@ function init() {
         }
     }
 
-    initFBX();
+    //initFBX();
 
     const sphereGeometry = new THREE.SphereGeometry(0.2, 32, 32);
     const sphereMaterial = new THREE.MeshStandardMaterial({ color: 'red' });
@@ -193,7 +193,7 @@ function init() {
     //
 
     renderer = new THREE.WebGPURenderer( { antialias: true, forceWebGL: true, colorBufferType: THREE.UnsignedByteType, multiview: true } );
-    renderer.setPixelRatio( window.devicePixelRatio );
+    renderer.setPixelRatio( 0.5  * window.devicePixelRatio );
     renderer.setSize( window.innerWidth, window.innerHeight );
     renderer.setAnimationLoop( render );
     renderer.xr.enabled = true;

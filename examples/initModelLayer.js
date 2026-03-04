@@ -815,7 +815,7 @@ export function initModelLayer(
         layerSize.width*0.11, layerSize.height*0.12,
         layerPosition,
         new THREE.Quaternion(),
-        layerSize.width * 800, layerSize.height * 800,
+        window.innerWidth / 4, window.innerHeight / 4,
         () => renderer.render(modelScene, modelCamera)
     );
     modelLayer.position.set(-0.43, 1.36, -0.65);
