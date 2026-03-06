@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { Break, If, texture3D, uniform, Fn, cameraProjectionMatrix, 
-       modelViewMatrix,float, vec3, vec4,positionLocal, mul, cameraPosition, modelWorldMatrixInverse, Loop, max,
+       modelViewMatrix,float, vec3, array, abs, vec4,positionLocal, mul, cameraPosition, modelWorldMatrixInverse, Loop, max,
        uniformArray, texture} from 'three/tsl';
 import { RaymarchingBox } from 'three/addons/tsl/utils/Raymarching.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -385,6 +385,11 @@ export function initModelLayer(
                     return dist.lessThan(0.0);
 
                 });
+                
+                const isoArray = array([float(0.1), float(0.15), float(0.2), float(0.25)]);
+                const colorArray = array([vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), vec3(1.0, 1.0, 0.0)]);
+                const opacityArray = array([float(0.9), float(0.1), float(0.0), float(0.0)]);
+
                 // DVR accumulators
                 let accumColor = vec3(0.0).toVar();
                 let accumAlpha = float(0.0).toVar();
@@ -404,21 +409,30 @@ export function initModelLayer(
                     const density = float( 0.0 ).toVar();
                     density.assign(1.0);
 
+                    //renderingMode.assign(1);
                     If(renderingMode.equal(0), () => {
-                        If(mapValue.greaterThan(threshold).and(clip.not()), () => {
-                            const p = vec3(positionRay).add(0.5);
-                            Loop( rangesSizeUniform, ( { i } ) => {
-                                const minVal = rangeMinsUniform.element(i);
-                                const maxVal = rangeMaxesUniform.element(i);
-                                If(mapValue.greaterThanEqual(minVal).and(mapValue.lessThan(maxVal)), () => {
-                                    finalColor.assign(colorsMappingUniform.element(i));
-                                    finalColor.a.assign(opacityMappingUniform.element(i));
-                                }); 
-                            } );
-                            
-                            Break();
+                        If(abs(mapValue.sub(isoArray.element(0))).lessThan(0.02).and(accumAlpha.lessThan(0.95)), () => {
+                            accumColor.assign(accumColor.add(colorArray.element(0).mul(float(1.0).sub(accumAlpha))));
+                            accumAlpha.assign(1.0);
                         });
-                        
+
+                        // Уровень 1
+                        If(abs(mapValue.sub(isoArray.element(1))).lessThan(0.02).and(accumAlpha.lessThan(0.95)), () => {
+                            accumColor.assign(accumColor.add(colorArray.element(1).mul(float(1.0).sub(accumAlpha))));
+                            accumAlpha.assign(1.0);
+                        });
+
+                        // Уровень 2
+                        If(abs(mapValue.sub(isoArray.element(2))).lessThan(0.02).and(accumAlpha.lessThan(0.95)), () => {
+                            accumColor.assign(accumColor.add(colorArray.element(2).mul(float(1.0).sub(accumAlpha))));
+                            accumAlpha.assign(1.0);
+                        });
+
+                        // Уровень 3
+                        If(abs(mapValue.sub(isoArray.element(3))).lessThan(0.02).and(accumAlpha.lessThan(0.95)), () => {
+                            accumColor.assign(accumColor.add(colorArray.element(3).mul(float(1.0).sub(accumAlpha))));
+                            accumAlpha.assign(1.0);
+                        });    
 
                     })
                     .ElseIf(renderingMode.equal(1), () => {
@@ -491,6 +505,12 @@ export function initModelLayer(
                     finalColor.rgb.assign(accumColor);
                     finalColor.a.assign(accumAlpha);
                 });
+                If((renderingMode.equal(0)), ()=> {
+                    finalColor.rgb.assign(accumColor);
+                    finalColor.a.assign(accumAlpha);
+                });
+
+                
                 
                 return finalColor;
 
@@ -499,7 +519,7 @@ export function initModelLayer(
             
             volumeMaterial.colorNode = opaqueRaymarchingTexture({
                 texture: texture3D(texture, null, 0),
-                steps: 64
+                steps: 256
             });
             volumeMaterial.side = THREE.BackSide;
             volumeMaterial.transparent = true;
@@ -712,7 +732,7 @@ export function initModelLayer(
         animParams.frame = 0;
         function animate(updateCamera = true) {
             scene.updateMatrixWorld(true);
-            requestAnimationFrame(animate);
+            //requestAnimationFrame(animate);
             let currentFrame = animParams.frame;
             if (models) {
                 models.forEach((model, i) => {
@@ -815,7 +835,7 @@ export function initModelLayer(
         layerSize.width*0.11, layerSize.height*0.12,
         layerPosition,
         new THREE.Quaternion(),
-        window.innerWidth / 2, window.innerHeight / 2   ,
+        window.innerWidth / 4 , window.innerHeight / 4,
         () => renderer.render(modelScene, modelCamera)
     );
     modelLayer.position.set(-0.43, 1.36, -0.65);

@@ -32,6 +32,7 @@
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js';
+			import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
@@ -55,84 +56,302 @@
 
 				new OrbitControls( camera, renderer.domElement );
 
-				const dimVolX = 480, dimVolY = 598, dimVolZ = 564;
-				const volumePath = 'volumes/Frame01/Volume.raw';
 				// Texture
-				fetch(volumePath)
-				.then(response => response.arrayBuffer())
-				.then(buffer => {
-					const expectedSize = dimVolX * dimVolY * dimVolZ;
-					const byteArray = new Uint8Array(buffer);
 
-					if (byteArray.length !== expectedSize) {
-						console.warn(`Expected ${expectedSize} bytes, got ${byteArray.length}`);
+				const size = 128;
+				const data = new Uint8Array( size * size * size );
+
+				let i = 0;
+				const perlin = new ImprovedNoise();
+				const vector = new THREE.Vector3();
+
+				for ( let z = 0; z < size; z ++ ) {
+
+					for ( let y = 0; y < size; y ++ ) {
+
+						for ( let x = 0; x < size; x ++ ) {
+
+							vector.set( x, y, z ).divideScalar( size );
+
+							const d = perlin.noise( vector.x * 6.5, vector.y * 6.5, vector.z * 6.5 );
+
+							data[ i ++ ] = d * 128 + 128;
+
+						}
+
 					}
-					const texture = new THREE.Data3DTexture(byteArray, dimVolX, dimVolY, dimVolZ);
-					texture.format = THREE.RedFormat;
-					texture.type = THREE.UnsignedByteType;
-					texture.minFilter = THREE.LinearFilter;
-					texture.magFilter = THREE.LinearFilter;
-					texture.unpackAlignment = 1;
-					texture.needsUpdate = true;
 
-					// Shader
+				}
 
-					const opaqueRaymarchingTexture = Fn( ( { texture, steps, threshold } ) => {
+				const texture = new THREE.Data3DTexture( data, size, size, size );
+				texture.format = THREE.RedFormat;
+				texture.minFilter = THREE.LinearFilter;
+				texture.magFilter = THREE.LinearFilter;
+				texture.unpackAlignment = 1;
+				texture.needsUpdate = true;
 
-						const finalColor = vec4( 0 ).toVar();
+				// Shader
 
-						RaymarchingBox( steps, ( { positionRay } ) => {
+				const opaqueRaymarchingTexture = Fn( ( { texture, steps, threshold } ) => {
 
-							const mapValue = texture.sample( positionRay.add( 0.5 ) ).r.toVar();
+					const finalColor = vec4( 0 ).toVar();
 
-							If( mapValue.greaterThan( threshold ), () => {
+					RaymarchingBox( steps, ( { positionRay } ) => {
 
-								const p = vec3( positionRay ).add( 0.5 );
+						const mapValue = texture.sample( positionRay.add( 0.5 ) ).r.toVar();
 
-								finalColor.rgb.assign( texture.normal( p ).mul( 0.5 ).add( positionRay.mul( 1.5 ).add( 0.25 ) ) );
-								finalColor.a.assign( 1 );
-								Break();
+						If( mapValue.greaterThan( threshold ), () => {
 
-							} );
+							const p = vec3( positionRay ).add( 0.5 );
+
+							finalColor.rgb.assign( texture.normal( p ).mul( 0.5 ).add( positionRay.mul( 1.5 ).add( 0.25 ) ) );
+							finalColor.a.assign( 1 );
+							Break();
 
 						} );
 
-						return finalColor;
-
 					} );
 
-					//
+					return finalColor;
 
-					const threshold = uniform( 0.3 );
-					const steps = uniform( 200 );
+				} );
 
-					const material = new THREE.NodeMaterial();
-					material.colorNode = opaqueRaymarchingTexture( {
-						texture: texture3D( texture, null, 0 ),
-						steps,
-						threshold
-					} );
-					material.side = THREE.BackSide;
-					material.transparent = true;
+				//
 
-					mesh = new THREE.Mesh( new THREE.BoxGeometry( 1, 1, 1 ), material );
-					scene.add( mesh );
+				const threshold = uniform( 0.6 );
+				const steps = uniform( 200 );
 
-					//
+				const material = new THREE.NodeMaterial();
+				material.colorNode = opaqueRaymarchingTexture( {
+					texture: texture3D( texture, null, 0 ),
+					steps,
+					threshold
+				} );
+				material.side = THREE.BackSide;
+				material.transparent = true;
+				material.depthWrite = false;
 
-					const gui = new GUI();
-					gui.add( threshold, 'value', 0, 1, 0.01 ).name( 'threshold' );
-					gui.add( steps, 'value', 0, 300, 1 ).name( 'steps' );
+				mesh = new THREE.Mesh( new THREE.BoxGeometry( 1, 1, 1 ), material );
+				mesh.renderOrder = 2;
+				scene.add( mesh );
+				
+// 1. Расстояние от точки до отрезка (проекция)
+function distToSegment(p, a, b) {
+    const ab = b.clone().sub(a);
+    const ap = p.clone().sub(a);
+    let t = ap.dot(ab) / ab.lengthSq();
+    t = Math.max(0, Math.min(1, t));
+    return p.distanceTo(a.clone().add(ab.multiplyScalar(t)));
+}
 
-					window.addEventListener( 'resize', onWindowResize );
+// 2. Проверка точки в треугольнике (через барицентрические координаты)
+function isPointInTriangle(p, a, b, c) {
+    const v0 = c.clone().sub(a);
+    const v1 = b.clone().sub(a);
+    const v2 = p.clone().sub(a);
+    const dot00 = v0.dot(v0), dot01 = v0.dot(v1), dot02 = v0.dot(v2);
+    const dot11 = v1.dot(v1), dot12 = v1.dot(v2);
+    const invDenom = 1 / (dot00 * dot11 - dot01 * dot01);
+    const u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+    const v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+    return (u >= 0) && (v >= 0) && (u + v < 1);
+}
 
-				})
-				.catch(error => {
-					console.error('Failed to load volume:', error);
+// 3. Расстояние от точки до треугольника (Ключевая функция!)
+function pointToTriangleDistance(p, a, b, c) {
+    const ab = b.clone().sub(a);
+    const ac = c.clone().sub(a);
+    const ap = p.clone().sub(a);
+    const n = new THREE.Vector3().crossVectors(ab, ac);
+    const distToPlane = Math.abs(ap.dot(n) / n.length());
+    const proj = p.clone().sub(n.clone().multiplyScalar(ap.dot(n) / n.lengthSq()));
+    
+    if (isPointInTriangle(proj, a, b, c)) return distToPlane;
+    return Math.min(distToSegment(p, a, b), distToSegment(p, b, c), distToSegment(p, c, a));
+}
+
+// 4. ГЛАВНАЯ ФУНКЦИЯ ВОКСЕЛИЗАЦИИ
+function getVoxelData(mesh, resolution = 32) {
+    const box = new THREE.Box3().setFromObject(mesh);
+    const voxels = new Uint8Array(resolution ** 3);
+    const geo = mesh.geometry.toNonIndexed();
+    const pos = geo.attributes.position.array;
+    const size = new THREE.Vector3().subVectors(box.max, box.min);
+    
+    // Порог расстояния: если точка очень близка к поверхности, считаем ее "стенкой"
+    // Но для вокселизации нам нужно знать "внутри". 
+    // Для полусферы мы используем вектор направления от центра бокса
+    const center = new THREE.Vector3().addVectors(box.min, box.max).multiplyScalar(0.5);
+
+    for (let i = 0; i < voxels.length; i++) {
+        const z = Math.floor(i / (resolution * resolution));
+        const y = Math.floor((i % (resolution * resolution)) / resolution);
+        const x = i % resolution;
+        const p = new THREE.Vector3(
+            box.min.x + (x / resolution) * size.x,
+            box.min.y + (y / resolution) * size.y,
+            box.min.z + (z / resolution) * size.z
+        );
+
+        // Проверяем направление нормали (грубый метод "внутри")
+        // Если точка лежит в полусфере, она должна быть близка к поверхности
+        // И вектор (p - center) должен быть направлен "вдоль" нормали
+        for (let j = 0; j < pos.length; j += 9) {
+            const a = new THREE.Vector3(pos[j], pos[j+1], pos[j+2]);
+            const b = new THREE.Vector3(pos[j+3], pos[j+4], pos[j+5]);
+            const c = new THREE.Vector3(pos[j+6], pos[j+7], pos[j+8]);
+            
+            if (pointToTriangleDistance(p, a, b, c) < (size.x / resolution)) {
+                voxels[i] = 1;
+                break;
+            }
+        }
+    }
+    return voxels;
+}
+				function addVoxelsToScene(voxels, resolution, box3, scene) {
+
+    const voxelSize = new THREE.Vector3()
+        .copy(box3.max)
+        .sub(box3.min)
+        .divideScalar(resolution);
+
+    const geometry = new THREE.BoxGeometry(
+        voxelSize.x * 0.9,
+        voxelSize.y * 0.9,
+        voxelSize.z * 0.9
+    );
+
+    const material = new THREE.MeshNormalMaterial();
+
+    // считаем количество активных вокселей
+    let count = 0;
+    for (let i = 0; i < voxels.length; i++) {
+        if (voxels[i] === 1) count++;
+    }
+
+    if (count === 0) {
+        console.warn("Нет вокселей для отрисовки!");
+        return;
+    }
+
+    const instancedMesh = new THREE.InstancedMesh(geometry, material, count);
+    instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+    const matrix = new THREE.Matrix4();
+    const position = new THREE.Vector3();
+
+    let index = 0;
+
+    for (let i = 0; i < voxels.length; i++) {
+
+        if (voxels[i] !== 1) continue;
+
+        const z = Math.floor(i / (resolution * resolution));
+        const y = Math.floor((i - z * resolution * resolution) / resolution);
+        const x = i % resolution;
+
+        position.set(
+            box3.min.x + (x + 0.5) * voxelSize.x,
+            box3.min.y + (y + 0.5) * voxelSize.y,
+            box3.min.z + (z + 0.5) * voxelSize.z
+        );
+
+        matrix.identity();          // важно
+        matrix.setPosition(position);
+
+        instancedMesh.setMatrixAt(index, matrix);
+        index++;
+    }
+
+    instancedMesh.instanceMatrix.needsUpdate = true;
+
+    scene.add(instancedMesh);
+}
+
+				const sphereGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+				
+				const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+				sphereMaterial.transparent = true;
+				sphereMaterial.opacity = 0.5;
+				sphereMaterial.blending = THREE.AdditiveBlending;
+
+				const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+				sphere.position.x = 1;
+				sphere.renderOrder = 1;
+				sphere.geometry.computeBoundingBox();
+				sphere.geometry.computeBoundingSphere();
+				// Если меш все еще "кривой", можно принудительно нормализовать
+				sphere.geometry.computeVertexNormals();
+				//scene.add(sphere);
+
+				const loader = new OBJLoader();
+
+				// loadAsync возвращает Promise, который разрешается в сам объект (Group/Mesh)
+				const meshPromise = loader.loadAsync('meshes/Frame01/MeshesZ0.obj');
+
+				meshPromise.then((object) => {
+					// В отличие от GLTF, OBJLoader возвращает объект напрямую, не обернутый в scene
+					const rowMajor = [
+						0, 1, 0, 0,
+						0, 0, -1, 0,
+						-1, 0, 0, 0,
+						0, 0, 0, 1
+					];
+					const m = new THREE.Matrix4();
+					m.set(
+						rowMajor[0], rowMajor[4], rowMajor[8],  rowMajor[12],
+						rowMajor[1], rowMajor[5], rowMajor[9],  rowMajor[13],
+						rowMajor[2], rowMajor[6], rowMajor[10], rowMajor[14],
+						rowMajor[3], rowMajor[7], rowMajor[11], rowMajor[15]
+					);
+					// Extract rotation only
+					const quat = new THREE.Quaternion();
+					m.extractRotation(m);
+					quat.setFromRotationMatrix(m);
+					console.log("Rotation", quat);
+					const M2 = new THREE.Matrix4();
+
+					// Example rotation (change this to whatever you need)
+					M2.makeRotationX(THREE.MathUtils.degToRad(90));
+
+
+					// ------------------------------
+					// 4) Apply matrices one by one
+					// ------------------------------
+					object.scale.set(0.02, 
+					0.02, 
+					0.02);
+
+					object.applyMatrix4(m);   // first transformation
+					object.applyMatrix4(M2);  // second transformation
+					scene.add(object);
+					const resolution = 10;
+					//const voxelData = getVoxelData(object, resolution, scene);
+					console.log(voxelData.length);
+					// 3. Рисуем
+					const box = new THREE.Box3().setFromObject(object);
+					//addVoxelsToScene(voxelData, resolution, box, scene);
+					console.log("Модель загружена и добавлена в сцену!");
+				}).catch((error) => {
+					console.error("Ошибка при загрузке:", error);
 				});
-				
 
-				
+				// 1. Получаем данные
+				const resolution = 10;
+				const voxelData = getVoxelData(sphere, resolution, scene);
+				console.log(voxelData.length);
+
+				const textureTest = new THREE.Data3DTexture(voxelData, resolution, resolution, resolution);
+				// 3. Рисуем
+				const box = new THREE.Box3().setFromObject(sphere);
+				addVoxelsToScene(voxelData, resolution, box, scene);
+
+				const gui = new GUI();
+				gui.add( threshold, 'value', 0, 1, 0.01 ).name( 'threshold' );
+				gui.add( steps, 'value', 0, 300, 1 ).name( 'steps' );
+
+				window.addEventListener( 'resize', onWindowResize );
 
 			}
 
