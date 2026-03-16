@@ -765,6 +765,6 @@ function render() {
     //sphereControls.update();
 
     renderer.render( scene, camera );
-    updateStats();
+    //updateStats();
 
 }

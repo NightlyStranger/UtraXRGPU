@@ -4,13 +4,17 @@ import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { Break, If, texture3D, uniform, Fn, cameraProjectionMatrix, 
        modelViewMatrix,float, vec3, array, abs, vec4,positionLocal, mul, cameraPosition, modelWorldMatrixInverse, Loop, max,
-       uniformArray, texture} from 'three/tsl';
+       uniformArray, texture,
+    screenUV, mix, distance,
+    pass, color, oneMinus, clamp, int, sub, negate, modelWorldMatrix, Continue
+} from 'three/tsl';
 import { RaymarchingBox } from 'three/addons/tsl/utils/Raymarching.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadFBX } from './fbxLoader.js';
 import { FontLoader } from 'three/addons/loaders/FontLoader.js';
 import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
 
+const LAYER_VOLUMETRIC_LIGHTING = 10;
 // Clipping planes
 const worldPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0.0);
 const refferencePlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0.0);
@@ -46,8 +50,48 @@ export function initModelLayer(
   backgroundColor = 0xf0f0f0,
   onLoad = () => {},
 } = {}) {
+    const renderPipeline = new THREE.PostProcessing( renderer );
     const modelScene = new THREE.Scene();
     let helper3D;
+    //RenderingPipeline
+    const scenePass = pass(modelScene, modelCamera, {
+        depthBuffer: true
+    });
+    const sceneDepth = scenePass.getTextureNode( 'depth' );
+
+    const volumetricLayer = new THREE.Layers();
+    volumetricLayer.disableAll();
+    //volumetricLayer.enable( LAYER_VOLUMETRIC_LIGHTING );
+
+    const volumetricPass = pass( modelScene, modelCamera, { depthBuffer: false } );
+    volumetricPass.name = 'Volumetric Lighting';
+    volumetricPass.setLayers( volumetricLayer );
+    const volumeDepth = volumetricPass.getTextureNode( 'depth' );
+
+    const sceneColor = scenePass.rgb;
+    const white = vec3(1.0, 1.0, 1.0);
+
+    const geometryMask = sceneColor.distance(white).greaterThan(0.22415);
+    const blendAlpha = float(0.0);
+    const blendedRegion = (
+        scenePass.mul(float(1.0).sub(blendAlpha))
+        .add(volumetricPass.mul(blendAlpha))
+    ).mul(geometryMask);
+
+    //const blendedRegion = (scenePass.mul(sceneFactor).add(volumetricPass)).mul(geometryMask);
+    modelScene.background;
+    const maskedVolume = volumetricPass.mul(geometryMask.oneMinus());
+
+    const finalColor = blendedRegion.add(maskedVolume);
+    const black = vec3(0.0);
+    const blackMask = finalColor.rgb.distance(black).lessThan(0.001);
+    const sceneCol = vec3(modelScene.backgroundColor);
+    const output = finalColor.rgb.mul(blackMask.oneMinus()).add(sceneCol.mul(blackMask));
+
+    const depthFactor = sceneDepth.greaterThan(0.0).select(1.0, 1.0);
+
+    renderPipeline.outputNode = output;//.mul(depthFactor);//volumetricPass;
+    //
 
     const globalClippingGroup = new THREE.ClippingGroup();
     globalClippingGroup.clippingPlanes = [];
@@ -563,7 +607,8 @@ export function initModelLayer(
             volumeObserver.updateMatrixWorld(true);
             render();
             function render() {
-                renderer.render(modelScene, modelCamera);
+                renderPipeline.render();
+                //renderer.render(modelScene, modelCamera);
                 
             }
 
@@ -836,7 +881,10 @@ export function initModelLayer(
         layerPosition,
         new THREE.Quaternion(),
         window.innerWidth / 4 , window.innerHeight / 4,
-        () => renderer.render(modelScene, modelCamera)
+        () => {
+            renderPipeline.render();
+            //renderer.render(modelScene, modelCamera);
+        }
     );
     modelLayer.position.set(-0.43, 1.36, -0.65);
     modelLayer.scale.set(1.1, 1.1, 1.1);
