@@ -109,7 +109,7 @@ export function initModelLayer(
 
     const depthFactor = sceneDepth.greaterThan(0.0).select(1.0, 1.0);
 
-    renderPipeline.outputNode = output.mul(depthFactor);//volumetricPass;
+    renderPipeline.outputNode = volumetricPass.mul(depthFactor);//volumetricPass;
     //=============================
 
     const globalClippingGroup = new THREE.ClippingGroup();
