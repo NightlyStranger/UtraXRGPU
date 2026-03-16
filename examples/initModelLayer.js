@@ -1,15 +1,35 @@
-import * as THREE from 'three';
+//import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { Break, If, texture3D, uniform, Fn, cameraProjectionMatrix, 
-       modelViewMatrix,float, vec3, array, abs, vec4,positionLocal, mul, cameraPosition, modelWorldMatrixInverse, Loop, max,
-       uniformArray, texture} from 'three/tsl';
+       modelViewMatrix,float, vec3, array, abs, vec4, Loop, max,
+       uniformArray, texture, screenUV, mix, distance,
+    pass, color, oneMinus, clamp, int, sub, negate, modelWorldMatrix, Continue
+} from 'three/tsl';
 import { RaymarchingBox } from 'three/addons/tsl/utils/Raymarching.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadFBX } from './fbxLoader.js';
 import { FontLoader } from 'three/addons/loaders/FontLoader.js';
 import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
+
+const LAYER_VOLUMETRIC_LIGHTING = 10;
+/*
+
+//Scene path
+
+
+volumetricMaterial.depthNode = sceneDepth.sample( screenUV );
+
+
+*/
+
+
+//
+
+const modifier = new SimplifyModifier();
 
 // Clipping planes
 const worldPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0.0);
@@ -17,7 +37,7 @@ const refferencePlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0.0);
 const viewPlane = worldPlane.clone();
 let globalVolumeMesh;
 
-const modelCamera = new THREE.PerspectiveCamera(50, 1, 1, 10000);
+const modelCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000.0);
 modelCamera.position.set(0.0, 2.0, 5.0);
 
 let renderTarget;
@@ -46,8 +66,51 @@ export function initModelLayer(
   backgroundColor = 0xf0f0f0,
   onLoad = () => {},
 } = {}) {
+    const renderPipeline = new THREE.PostProcessing( renderer );
+
     const modelScene = new THREE.Scene();
+    modelScene.background = null;
     let helper3D;
+
+    //RenderingPipeline
+    const scenePass = pass(modelScene, modelCamera, {
+        depthBuffer: true
+    });
+    const sceneDepth = scenePass.getTextureNode( 'depth' );
+
+    const volumetricLayer = new THREE.Layers();
+    volumetricLayer.disableAll();
+    volumetricLayer.enable( LAYER_VOLUMETRIC_LIGHTING );
+
+    const volumetricPass = pass( modelScene, modelCamera, { depthBuffer: false } );
+    volumetricPass.name = 'Volumetric Lighting';
+    volumetricPass.setLayers( volumetricLayer );
+    const volumeDepth = volumetricPass.getTextureNode( 'depth' );
+
+    const sceneColor = scenePass.rgb;
+    const white = vec3(1.0, 1.0, 1.0);
+
+    const geometryMask = sceneColor.distance(white).greaterThan(0.22415);
+    const blendAlpha = float(0.5);
+    const blendedRegion = (
+        scenePass.mul(float(1.0).sub(blendAlpha))
+        .add(volumetricPass.mul(blendAlpha))
+    ).mul(geometryMask);
+
+    //const blendedRegion = (scenePass.mul(sceneFactor).add(volumetricPass)).mul(geometryMask);
+    modelScene.background;
+    const maskedVolume = volumetricPass.mul(geometryMask.oneMinus());
+
+    const finalColor = blendedRegion.add(maskedVolume);
+    const black = vec3(0.0);
+    const blackMask = finalColor.rgb.distance(black).lessThan(0.001);
+    const sceneCol = vec3(modelScene.backgroundColor);
+    const output = finalColor.rgb.mul(blackMask.oneMinus()).add(sceneCol.mul(blackMask));
+
+    const depthFactor = sceneDepth.greaterThan(0.0).select(1.0, 1.0);
+
+    renderPipeline.outputNode = output.mul(depthFactor);//volumetricPass;
+    //=============================
 
     const globalClippingGroup = new THREE.ClippingGroup();
     globalClippingGroup.clippingPlanes = [];
@@ -279,55 +342,35 @@ export function initModelLayer(
                 quat.setFromRotationMatrix(m);
                 console.log("Rotation", quat);
 
-                // Apply rotation
-                //model.scale.set(0.02, 0.02, 0.02);
-
-                //model.applyMatrix4(m);
-
-                // ------------------------------
-                // 3) Additional matrix (M2)
-                // ------------------------------
                 const M2 = new THREE.Matrix4();
 
-                // Example rotation (change this to whatever you need)
                 M2.makeRotationX(THREE.MathUtils.degToRad(90));
 
-
-                // ------------------------------
-                // 4) Apply matrices one by one
-                // ------------------------------
                 model.scale.set(0.02, 0.02, 0.02);
 
-                model.applyMatrix4(m);   // first transformation
-                model.applyMatrix4(M2);  // second transformation
+                model.applyMatrix4(m);
+                model.applyMatrix4(M2);
 
 
 
                 const cherryMaterial = new THREE.MeshPhysicalMaterial({
                     color: new THREE.Color(0xff0055),
-                    metalness: 0.5,
-                    roughness: 0.05,
-                    transmission: 0.2,
-                    thickness: 1.0,
-                    transparent: true,
-                    opacity: 0.55,
-                    ior: 1.4,
+                    transparent: false, 
+                    opacity: 1.0,
                     side: THREE.DoubleSide,
-                    envMapIntensity: 1.5,
-                    reflectivity: 0.9,
-                    clearcoat: 1.0,
-                    clearcoatRoughness: 0.1,
-                    sheen: 1.0,
-                    sheenColor: new THREE.Color(1.0, 0.2, 0.5),
-                    sheenRoughness: 0.4,
-                    clipShadows: true,
-                    alphaToCoverage: true,
-                    depthWrite: false,
-                    renderOrder: 1
+                    depthWrite: true,
                 });
+
+                /*const cherryMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x000000,
+                    side: THREE.DoubleSide
+                });*/
 
                 model.traverse((child) => {
                 if (child.isMesh) {
+                    //const count = Math.floor(child.geometry.attributes.position.count * 0.6); 
+                    //const simplifiedGeometry = modifier.modify(child.geometry, count);
+                    //child.geometry = simplifiedGeometry;
                     child.material = cherryMaterial;
                 }
                 });
@@ -360,21 +403,22 @@ export function initModelLayer(
                 console.warn(`Expected ${expectedSize} bytes, got ${byteArray.length}`);
             }
 
-            const texture = new THREE.Data3DTexture(byteArray, dimX, dimY, dimZ);
-            texture.format = THREE.RedFormat;
-            texture.type = THREE.UnsignedByteType;
-            texture.minFilter = THREE.LinearFilter;
-            texture.magFilter = THREE.LinearFilter;
-            texture.unpackAlignment = 1;
-            texture.needsUpdate = true;
+            const volumeTexture = new THREE.Data3DTexture(byteArray, dimX, dimY, dimZ);
+            volumeTexture.format = THREE.RedFormat;
+            volumeTexture.type = THREE.UnsignedByteType;
+            volumeTexture.minFilter = THREE.LinearFilter;
+            volumeTexture.magFilter = THREE.LinearFilter;
+            volumeTexture.unpackAlignment = 1;
+            volumeTexture.needsUpdate = true;
 
             const q = new THREE.Quaternion();
             q.setFromEuler(new THREE.Euler(0, 0, Math.PI / 2));
 
             const volumeMaterial = new THREE.NodeMaterial();
+            volumeMaterial.depthNode = sceneDepth.sample( screenUV );
             
-            const opaqueRaymarchingTexture = Fn(({ texture, steps}) => {
-                //Add in g channel second texture
+            const opaqueRaymarchingTexture = Fn(({ texture, steps, sceneDepth}) => {
+
                 let finalColor = vec4().toVar();
                 finalColor.a.assign(0);
                 
@@ -386,18 +430,62 @@ export function initModelLayer(
 
                 });
                 
-                const isoArray = array([float(0.1), float(0.15), float(0.2), float(0.25)]);
-                const colorArray = array([vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), vec3(1.0, 1.0, 0.0)]);
-                const opacityArray = array([float(0.9), float(0.1), float(0.0), float(0.0)]);
-
                 // DVR accumulators
                 let accumColor = vec3(0.0).toVar();
                 let accumAlpha = float(0.0).toVar();
-                const one = float(1.0);
+                const one = float(1.0).toVar();
+                const testThreshold = float(0.5).toVar();
                 //MIP accumulators
                 let accum = float(0.3).toVar();
                 let opacity = float(0.0).toVar();
+                const val = float(0.1).toVar();
                 RaymarchingBox(steps, ({ positionRay }) => {
+                    
+                    const viewPos = modelViewMatrix.mul(vec4(positionRay, 1.0)).xyz;
+                    const clipPos = cameraProjectionMatrix.mul(viewPos);
+                    
+                    const ndc = clipPos.xyz.div(clipPos.w);
+                    //const screenUVTransform = (ndc.xy.mul(0.5)).add(0.5);
+                    const sceneD = sceneDepth.sample(screenUV).r;
+                    const epsilon = float(0.01);
+                    If((ndc.z).greaterThan(sceneD.sub(epsilon)), () => {
+                        const scarletColor = vec3(1.0, 0.05, 0.1);
+                        const scarletAlpha = float(0.8);
+                        const oneMinusAlpha = one.sub(scarletAlpha);
+                        //accumColor.assign(accumColor.add(scarletColor.mul(scarletAlpha).mul(oneMinusAlpha)));
+                        //accumAlpha.assign(accumAlpha.add(scarletAlpha.mul(oneMinusAlpha)));
+                        Break();
+                        
+                    });
+                    
+                    
+                    //Continue();
+                    //Break();
+/*
+const near = float(0.05);
+const far = float(100.0);
+
+const rawDepth = sceneDepth.sample(screenUV).r;
+
+const sceneViewZ = near.mul(far).div(far.sub(rawDepth.mul(far.sub(near))));
+
+const rayViewZ = viewPos.z.negate(); 
+
+const epsilon = float(0.01); 
+
+If(rayViewZ.greaterThan(sceneViewZ.sub(epsilon)), () => {
+    const scarletColor = vec3(1.0, 0.05, 0.1);
+    const scarletAlpha = float(0.8);
+    const oneMinusAlpha = one.sub(scarletAlpha);
+    accumColor.assign(accumColor.add(scarletColor.mul(scarletAlpha).mul(oneMinusAlpha)));
+    accumAlpha.assign(accumAlpha.add(scarletAlpha.mul(oneMinusAlpha)));
+    Break();
+});
+*/
+
+
+                    
+
                     let transformedPos = positionRay;
                     transformedPos = transformedPos.add(0.5);
                     const mapValue = texture.sample(transformedPos).r.toVar();
@@ -411,28 +499,55 @@ export function initModelLayer(
 
                     //renderingMode.assign(1);
                     If(renderingMode.equal(0), () => {
-                        If(abs(mapValue.sub(isoArray.element(0))).lessThan(0.02).and(accumAlpha.lessThan(0.95)), () => {
-                            accumColor.assign(accumColor.add(colorArray.element(0).mul(float(1.0).sub(accumAlpha))));
-                            accumAlpha.assign(1.0);
+                        If(clip.not(), ()=> {
+                            Loop({ start: 3, end: rangesSizeUniform }, ({ i }) => {
+                                const v1 = rangeMinsUniform.element(i);
+                                const v2 = rangeMaxesUniform.element(i);
+                                const a = ((v1).add(v2)).div(2);
+                                const b = abs(a.sub(v1));
+                                const c0 = colorsMappingUniform.element(i.sub(1));
+                                const c1 = colorsMappingUniform.element(i);
+
+                                const a0 = opacityMappingUniform.element(i.sub(1));
+                                const a1 = opacityMappingUniform.element(i);
+                                const c = (a0.add(a1)).div(2);
+                                //d = small_offset
+                                const isoColor = (c0.add(c1)).div(2);
+                                const computeAlpha = Fn(({ x, a, b, c }) => {
+                                    const alpha = float(0.0).toVar();
+                                    const dist = x.sub(a);
+                                    
+                                    If(dist.lessThan(negate(b)).or(dist.greaterThan(b)), () => {
+                                        return float(0.0);
+                                    });
+                                    
+                                    If(dist.lessThan(0.0), () => {
+                                        alpha.assign((((dist.add(b)).div(b)).mul(c)));
+                                    })
+                                    .Else(() => {
+                                        alpha.assign(((((b.sub(dist)).div(b))).mul(c)));
+                                    });
+                                    
+                                    
+                                    return clamp(alpha, 0.0, 1.0)
+                                    
+
+                                });
+
+                                const sampleAlpha = computeAlpha({
+                                    x: mapValue, 
+                                    a: a, 
+                                    b: b, 
+                                    c: c
+                                });
+                                const oneMinusAlpha = one.sub(accumAlpha);
+                                accumColor.assign(accumColor.add(isoColor.mul(sampleAlpha).mul(oneMinusAlpha)));
+                                accumAlpha.assign(accumAlpha.add(sampleAlpha.mul(oneMinusAlpha)));
+                            });
+
                         });
 
-                        // Уровень 1
-                        If(abs(mapValue.sub(isoArray.element(1))).lessThan(0.02).and(accumAlpha.lessThan(0.95)), () => {
-                            accumColor.assign(accumColor.add(colorArray.element(1).mul(float(1.0).sub(accumAlpha))));
-                            accumAlpha.assign(1.0);
-                        });
-
-                        // Уровень 2
-                        If(abs(mapValue.sub(isoArray.element(2))).lessThan(0.02).and(accumAlpha.lessThan(0.95)), () => {
-                            accumColor.assign(accumColor.add(colorArray.element(2).mul(float(1.0).sub(accumAlpha))));
-                            accumAlpha.assign(1.0);
-                        });
-
-                        // Уровень 3
-                        If(abs(mapValue.sub(isoArray.element(3))).lessThan(0.02).and(accumAlpha.lessThan(0.95)), () => {
-                            accumColor.assign(accumColor.add(colorArray.element(3).mul(float(1.0).sub(accumAlpha))));
-                            accumAlpha.assign(1.0);
-                        });    
+                        
 
                     })
                     .ElseIf(renderingMode.equal(1), () => {
@@ -518,13 +633,19 @@ export function initModelLayer(
             });
             
             volumeMaterial.colorNode = opaqueRaymarchingTexture({
-                texture: texture3D(texture, null, 0),
-                steps: 256
+                texture: texture3D(volumeTexture, null, 0),
+                steps: 256,
+                sceneDepth: texture(sceneDepth)
             });
+            
             volumeMaterial.side = THREE.BackSide;
-            volumeMaterial.transparent = true;
-            volumeMaterial.alphaToCoverage = true;
+            //volumeMaterial.transparent = true;
+            //volumeMaterial.alphaToCoverage = true;
+
+            
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), volumeMaterial);
+            mesh.layers.disableAll();
+			mesh.layers.enable( LAYER_VOLUMETRIC_LIGHTING );
             
             const deg = THREE.MathUtils.degToRad;
             const pos = new THREE.Vector3(-1.36589, 0, -100);
@@ -545,10 +666,9 @@ export function initModelLayer(
             
             updatePlaneForMesh(mesh, worldPlane, planeNormal, planeConstant);
 
-            // ---------- Create SECOND mesh (volumeObserver) ----------
             const volumeObserver = new THREE.Mesh(
-                new THREE.BoxGeometry(1, 1, 1),                 // shared geometry (OK)
-                volumeMaterial    // CLONED material (important)
+                new THREE.BoxGeometry(1, 1, 1),
+                volumeMaterial
             );
 
             // copy full transform state
@@ -563,7 +683,8 @@ export function initModelLayer(
             volumeObserver.updateMatrixWorld(true);
             render();
             function render() {
-                renderer.render(modelScene, modelCamera);
+                renderPipeline.render();
+                //renderer.render(modelScene, modelCamera);
                 
             }
 
@@ -733,6 +854,8 @@ export function initModelLayer(
         function animate(updateCamera = true) {
             scene.updateMatrixWorld(true);
             //requestAnimationFrame(animate);
+            //myTexture = createGradientTexture();
+            quad.material.colorNode = texture(sceneDepth);
             let currentFrame = animParams.frame;
             if (models) {
                 models.forEach((model, i) => {
@@ -836,9 +959,9 @@ export function initModelLayer(
         layerPosition,
         new THREE.Quaternion(),
         window.innerWidth / 4 , window.innerHeight / 4,
-        () => renderer.render(modelScene, modelCamera)
+        () => renderPipeline.render()//renderer.render(modelScene, modelCamera)
     );
-    modelLayer.position.set(-0.43, 1.36, -0.65);
+    modelLayer.position.set(-0.43 - 1.0, 1.36, -0.65);
     modelLayer.scale.set(1.1, 1.1, 1.1);
     const layerParams = {
         posX: modelLayer.position.x,
@@ -866,6 +989,48 @@ export function initModelLayer(
     }
     
     scene.add(modelLayer);
+
+    //test
+    function createCheckerTexture() {
+        const width = 2;
+        const height = 2;
+        
+        const data = new Uint8Array([
+            255, 255, 255, 255,    200, 200, 200, 255,
+            200, 200, 200, 255,    255, 255, 255, 255
+        ]);
+
+        const tex = new THREE.DataTexture(data, width, height);
+        
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        
+        tex.needsUpdate = true;
+        return tex;
+    }
+    function createGradientTexture() {
+        const data = new Uint8Array([
+            255, 0, 0, 255,    0, 255, 0, 255,
+            0, 0, 255, 255,    255, 255, 0, 255
+        ]);
+        const tex = new THREE.DataTexture(data, 2, 2);
+        tex.needsUpdate = true;
+        return tex;
+    }
+
+    const geometry = new THREE.PlaneGeometry(1, 1);
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    let myTexture = createCheckerTexture();
+    material.colorNode = texture(myTexture);
+    myTexture = createGradientTexture();
+
+
+    const quad = new THREE.Mesh(geometry, material);
+
+    quad.position.set(-0.43, 1.36, -0.65);
+
+    scene.add(quad);
 
     const extraLayers = [];
     const layerWidthWorld = layerSize.width * 0.11;
@@ -955,7 +1120,8 @@ export function initModelLayer(
         viewPlane,
         helper3D,
         controls,
-        renderOffscreenLayers
+        renderOffscreenLayers,
+        //renderPipeline
     };
 }
 
@@ -1050,7 +1216,7 @@ function addPlaneGUIControl(plane, gui, camera, controls, name = 'Clipping Plane
     };
 
     gui.add(params2, 'enableOrbit').name('Enable Orbit').onChange((value) => {
-        //controls.enabled = value;
+        controls.enabled = value;
     });
 
   return folder;

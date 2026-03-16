@@ -16,11 +16,13 @@ import { SphericalPlaneControls } from './SphericalPlaneControls.js';
 import { setupVRGUI, updateStats, initFBX, createHeartViewUI, setupStats  } from './vrEngine.js';
 import { InteractiveGroup } from 'three/addons/interactive/InteractiveGroup.js';
 import { addQuad } from './intersectionHelper.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 
 let camera, scene, renderer;
 let controller1, controller2;
 let controllerGrip1, controllerGrip2;
 let gModelsFunction;
+let gRenderingPipeline;
 
 const heartUIState = {
     threshold: 0.5,
@@ -183,6 +185,7 @@ function init() {
 
     //initFBX();
 
+
     const sphereGeometry = new THREE.SphereGeometry(0.2, 32, 32);
     const sphereMaterial = new THREE.MeshStandardMaterial({ color: 'red' });
     sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
@@ -206,7 +209,9 @@ function init() {
 
     //
 
-    renderer = new THREE.WebGPURenderer( { antialias: true, forceWebGL: true, colorBufferType: THREE.UnsignedByteType, multiview: true } );
+    renderer = new THREE.WebGPURenderer( { antialias: true, 
+        alpha: true,
+        forceWebGL: true, colorBufferType: THREE.UnsignedByteType, multiview: true, stencil: true } );
     renderer.setPixelRatio( 0.5  * window.devicePixelRatio );
     renderer.setSize( window.innerWidth, window.innerHeight );
     renderer.setAnimationLoop( render );
@@ -420,7 +425,8 @@ function init() {
         helper3D, 
         controls, 
         guiGroup, 
-        renderOffscreenLayers
+        renderOffscreenLayers,
+        //renderingPipeline
     } = initModelLayer(
         gui,
         renderer, scene, {
@@ -432,6 +438,8 @@ function init() {
             console.log('Model loaded:', model);
         }
     });
+    //renderingPipeline.render();
+    //gRenderingPipeline = renderingPipeline;
     gModelsFunction = animate;
     gWMatrix1 = new THREE.Matrix4();
 
@@ -764,6 +772,7 @@ function render() {
     
     //sphereControls.update();
 
+    //gRenderingPipeline.render();
     renderer.render( scene, camera );
     updateStats();
 

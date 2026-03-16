@@ -130,5 +130,8 @@
       "build/three.module.js"
     ],
     "directories": {}
+  },
+  "dependencies": {
+    "three-mesh-bvh": "^0.9.9"
   }
 }
