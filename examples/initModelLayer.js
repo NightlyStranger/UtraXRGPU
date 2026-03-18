@@ -6,7 +6,7 @@ import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { Break, If, texture3D, uniform, Fn, cameraProjectionMatrix, 
        modelViewMatrix,float, vec3, array, abs, vec4, Loop, max,
        uniformArray, texture, screenUV, mix, distance,
-    pass, color, oneMinus, clamp, int, sub, negate, modelWorldMatrix, Continue
+    pass, color, oneMinus, clamp, int, sub, negate, modelWorldMatrix, Continue, smoothstep
 } from 'three/tsl';
 import { RaymarchingBox } from 'three/addons/tsl/utils/Raymarching.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -109,7 +109,7 @@ export function initModelLayer(
 
     const depthFactor = sceneDepth.greaterThan(0.0).select(1.0, 1.0);
 
-    renderPipeline.outputNode = volumetricPass.mul(depthFactor);//volumetricPass;
+    renderPipeline.outputNode = volumetricPass;//.mul(depthFactor);//volumetricPass;
     //=============================
 
     const globalClippingGroup = new THREE.ClippingGroup();
@@ -180,8 +180,26 @@ export function initModelLayer(
     guiFolder.add(guiControls, 'enableNextLayer').name('Enable Next Layer');
     guiFolder.open();    
 
-    const renderingMode = uniform(2);
-    const threshold = uniform(0.4);
+    const renderingMode = uniform(0);
+    const threshold = uniform(0.29);
+
+    const isoParams = {
+        a: 0.27,
+        b: 0.03,
+        c: 0.005
+    };
+    const a = uniform( isoParams.a );
+    const b = uniform( isoParams.b );
+    const c = uniform( isoParams.c );
+    const isoFolder = gui.addFolder( 'ISO Rendering' );
+
+    isoFolder.add( isoParams, 'a', 0.0, 1.0, 0.001 ).name( 'a' ).onChange( v => a.value = v );
+    isoFolder.add( isoParams, 'b', 0.0, 0.5, 0.001 ).name( 'b' ).onChange( v => b.value = v );
+    isoFolder.add( isoParams, 'c', 0.0, 0.1, 0.0001 ).name( 'c' ).onChange( v => c.value = v );
+
+    isoFolder.open();
+
+    const isoColor = vec3(1, 0, 1);
     addRenderingModeGUIControl(renderingMode, gui);
     addThresholdGUIControl(threshold, gui, "Iso Threshold", 0.0, 1.0, 0.01);
 
@@ -441,7 +459,7 @@ export function initModelLayer(
                 const val = float(0.1).toVar();
                 RaymarchingBox(steps, ({ positionRay }) => {
                     
-                    const viewPos = modelViewMatrix.mul(vec4(positionRay, 1.0)).xyz;
+                    /*const viewPos = modelViewMatrix.mul(vec4(positionRay, 1.0)).xyz;
                     const clipPos = cameraProjectionMatrix.mul(viewPos);
                     
                     const ndc = clipPos.xyz.div(clipPos.w);
@@ -457,6 +475,7 @@ export function initModelLayer(
                         Break();
                         
                     });
+                    */
                     
                     
                     //Continue();
@@ -500,50 +519,35 @@ If(rayViewZ.greaterThan(sceneViewZ.sub(epsilon)), () => {
                     //renderingMode.assign(1);
                     If(renderingMode.equal(0), () => {
                         If(clip.not(), ()=> {
-                            Loop({ start: 3, end: rangesSizeUniform }, ({ i }) => {
-                                const v1 = rangeMinsUniform.element(i);
-                                const v2 = rangeMaxesUniform.element(i);
-                                const a = ((v1).add(v2)).div(2);
-                                const b = abs(a.sub(v1));
-                                const c0 = colorsMappingUniform.element(i.sub(1));
-                                const c1 = colorsMappingUniform.element(i);
+                            const computeAlpha = Fn(({ x, a, b, c }) => {
 
-                                const a0 = opacityMappingUniform.element(i.sub(1));
-                                const a1 = opacityMappingUniform.element(i);
-                                const c = (a0.add(a1)).div(2);
-                                //d = small_offset
-                                const isoColor = (c0.add(c1)).div(2);
-                                const computeAlpha = Fn(({ x, a, b, c }) => {
-                                    const alpha = float(0.0).toVar();
-                                    const dist = x.sub(a);
-                                    
-                                    If(dist.lessThan(negate(b)).or(dist.greaterThan(b)), () => {
-                                        return float(0.0);
-                                    });
-                                    
-                                    If(dist.lessThan(0.0), () => {
-                                        alpha.assign((((dist.add(b)).div(b)).mul(c)));
-                                    })
-                                    .Else(() => {
-                                        alpha.assign(((((b.sub(dist)).div(b))).mul(c)));
-                                    });
-                                    
-                                    
-                                    return clamp(alpha, 0.0, 1.0)
-                                    
+                                const left = smoothstep(
+                                    a.sub(b),
+                                    a,
+                                    x
+                                );
+                                const right = one.sub(
+                                    smoothstep(
+                                        a,
+                                        a.add(b),
+                                        x
+                                    )
+                                );
 
-                                });
+                                const alpha = left.mul(right).mul(c);
 
-                                const sampleAlpha = computeAlpha({
-                                    x: mapValue, 
-                                    a: a, 
-                                    b: b, 
-                                    c: c
-                                });
-                                const oneMinusAlpha = one.sub(accumAlpha);
-                                accumColor.assign(accumColor.add(isoColor.mul(sampleAlpha).mul(oneMinusAlpha)));
-                                accumAlpha.assign(accumAlpha.add(sampleAlpha.mul(oneMinusAlpha)));
+                                return clamp(alpha, 0.0, 1.0);
                             });
+
+                            const sampleAlpha = computeAlpha({
+                                x: mapValue, 
+                                a: a, 
+                                b: b, 
+                                c: c
+                            });
+                            const oneMinusAlpha = one.sub(accumAlpha);
+                            accumColor.assign(accumColor.add(isoColor.mul(sampleAlpha).mul(oneMinusAlpha)));
+                            accumAlpha.assign(accumAlpha.add(sampleAlpha.mul(oneMinusAlpha)));
 
                         });
 
@@ -853,7 +857,7 @@ If(rayViewZ.greaterThan(sceneViewZ.sub(epsilon)), () => {
         animParams.frame = 0;
         function animate(updateCamera = true) {
             scene.updateMatrixWorld(true);
-            //requestAnimationFrame(animate);
+            requestAnimationFrame(animate);
             //myTexture = createGradientTexture();
             quad.material.colorNode = texture(sceneDepth);
             let currentFrame = animParams.frame;
