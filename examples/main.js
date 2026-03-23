@@ -157,7 +157,7 @@ function init() {
             const { object } = await loadFBX(
                 scene,
                 gui,
-                'meshes/fbx/reduced_ultrasound_machine_transparent.fbx'
+                'meshes/fbx/ttable.fbx'
             );
 
             console.log('FBX loaded:', object);
@@ -181,7 +181,7 @@ function init() {
         }
     }
 
-    //initFBX();
+    initFBX();
 
     const sphereGeometry = new THREE.SphereGeometry(0.2, 32, 32);
     const sphereMaterial = new THREE.MeshStandardMaterial({ color: 'red' });
