@@ -438,13 +438,13 @@ export function initModelLayer(
                                     a,
                                     x
                                 );
-                                const right = one.sub(
-                                    smoothstep(
-                                        a,
+                                const right = smoothstep(
                                         a.add(b),
+                                        a,
                                         x
-                                    )
-                                );
+                                    );
+
+                                //if condition
 
                                 const alpha = left.mul(right).mul(c);
 
