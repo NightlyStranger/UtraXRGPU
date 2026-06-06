@@ -118,7 +118,6 @@ export function initModelLayer(
         }
     };
 
-    // Add button to GUI
     guiFolder.add(guiControls, 'enableNextLayer').name('Enable Next Layer');
     guiFolder.open();    
 
@@ -546,9 +545,41 @@ export function initModelLayer(
 
             });
             
+            const stepSize = uniform(0.05);
+            const resSettings = {
+                stepSize: 0.05,
+                resolution: 'Full'
+            };
+
+            const folder = gui.addFolder('Rendering Settings');
+
+            folder.add(resSettings, 'stepSize', 0.001, 0.2)
+                .step(0.001)
+                .name('Step Size')
+                .onChange((val) => {
+                    stepSize.value = val;
+                });
+
+            const resOptions = {
+                'Full': { w: window.innerWidth, h: window.innerHeight },
+                'Half': { w: window.innerWidth / 2, h: window.innerHeight / 2 },
+                'Quarter': { w: window.innerWidth / 4, h: window.innerHeight / 4 },
+                'Eighth': { w: window.innerWidth / 8, h: window.innerHeight / 8 }
+            };
+
+            folder.add(resSettings, 'resolution', Object.keys(resOptions))
+                .name('Resolution Scale')
+                .onChange((key) => {
+                    const res = resOptions[key];
+                    console.log(`Switching to: ${res.w}x${res.h}`);
+                });
+
+            const info = { res: `${window.innerWidth} x ${window.innerHeight}` };
+            folder.add(info, 'res').name('Current Res').disable();
+            folder.open();
             volumeMaterial.colorNode = opaqueRaymarchingTexture({
                 texture: texture3D(texture, null, 0),
-                steps: 256
+                steps: stepSize
             });
             volumeMaterial.side = THREE.BackSide;
             //material.transparent = true;

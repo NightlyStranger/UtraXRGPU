@@ -53,9 +53,17 @@ export const RaymarchingBox = ( steps, callback ) => {
 	bounds.assign( vec2( max( bounds.x, 0.0 ), bounds.y ) );
 
 	const inc = vec3( rayDir.abs().reciprocal() ).toVar();
-	const delta = float( min( inc.x, min( inc.y, inc.z ) ) ).toVar();
 
-	delta.divAssign( float( steps ) );
+	const stepSize = float(steps).toVar(); 
+
+	const rayLength = float( bounds.y.sub( bounds.x ) );
+
+	const dinamicSteps = float( rayLength.div( stepSize ) ).toVar();
+
+	const delta = stepSize;
+	//const delta = float(0.05).toVar();//float( min( inc.x, min( inc.y, inc.z ) ) ).toVar();
+
+	delta.divAssign( float( dinamicSteps ) );
 
 	const positionRay = vec3( vOrigin.add( bounds.x.mul( rayDir ) ) ).toVar();
 
