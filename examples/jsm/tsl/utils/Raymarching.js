@@ -1,4 +1,5 @@
-import { varying, vec4, modelWorldMatrixInverse, cameraPosition, positionGeometry, float, Fn, Loop, max, min, vec2, vec3 } from 'three/tsl';
+import { varying, vec4, modelWorldMatrixInverse, cameraPosition, positionGeometry, 
+	float, Fn, Loop, max, min, vec2, vec3, If, Break} from 'three/tsl';
 
 /**
  * @module Raymarching
@@ -40,9 +41,9 @@ const hitBox = /*@__PURE__*/ Fn( ( { orig, dir } ) => {
  * @param {number|Node} steps - The number of steps for raymarching.
  * @param {Function|FunctionNode} callback - The callback function to execute at each step.
  */
-export const RaymarchingBox = ( steps, callback ) => {
+export const RaymarchingBox = ( deltaUni ,steps, callback ) => {
 
-	const vOrigin = varying( vec3( modelWorldMatrixInverse.mul( vec4( cameraPosition, 1.0 ) ) ) );
+   const vOrigin = varying( vec3( modelWorldMatrixInverse.mul( vec4( cameraPosition, 1.0 ) ) ) );
 	const vDirection = varying( positionGeometry.sub( vOrigin ) );
 
 	const rayDir = vDirection.normalize();
@@ -53,23 +54,15 @@ export const RaymarchingBox = ( steps, callback ) => {
 	bounds.assign( vec2( max( bounds.x, 0.0 ), bounds.y ) );
 
 	const inc = vec3( rayDir.abs().reciprocal() ).toVar();
+	const delta = float( min( inc.x, min( inc.y, inc.z ) ) ).toVar();
 
-	const stepSize = float(steps).toVar(); 
-
-	const rayLength = float( bounds.y.sub( bounds.x ) );
-
-	const dinamicSteps = float( rayLength.div( stepSize ) ).toVar();
-
-	const delta = stepSize;
-	//const delta = float(0.05).toVar();//float( min( inc.x, min( inc.y, inc.z ) ) ).toVar();
-
-	delta.divAssign( float( dinamicSteps ) );
+	delta.divAssign( float( steps ) );
 
 	const positionRay = vec3( vOrigin.add( bounds.x.mul( rayDir ) ) ).toVar();
 
 	Loop( { type: 'float', start: bounds.x, end: bounds.y, update: delta }, () => {
 
-		callback( { positionRay} );
+		callback( { positionRay } );
 
 		positionRay.addAssign( rayDir.mul( delta ) );
 

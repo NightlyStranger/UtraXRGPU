@@ -6,7 +6,9 @@ import { Break, If, texture3D, uniform, Fn, cameraProjectionMatrix,
        modelViewMatrix,float, vec3, array, abs, vec4,positionLocal, mul, cameraPosition, modelWorldMatrixInverse, Loop, max,
        uniformArray, texture,
     screenUV, mix, distance,
-    pass, color, oneMinus, clamp, int, sub, negate, modelWorldMatrix, Continue, smoothstep
+    pass, color, oneMinus, clamp, int, sub, negate, modelWorldMatrix, Continue, smoothstep,
+    mat3,
+    cos, sin
 } from 'three/tsl';
 import { RaymarchingBox } from 'three/addons/tsl/utils/Raymarching.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -396,15 +398,18 @@ export function initModelLayer(
 
             const volumeMaterial = new THREE.NodeMaterial();
             
-            const opaqueRaymarchingTexture = Fn(({ texture, steps}) => {
+            const opaqueRaymarchingTexture = Fn(({ texture, delta, steps}) => {
                 //Add in g channel second texture
                 let finalColor = vec4().toVar();
                 finalColor.a.assign(0);
                 
+                
                 const clipByPlane = Fn(({ point, n, c }) => {
 
-                    const dist = n.normalize().dot(point).add(c);
-
+                    const scaledPoint = point.mul(5); 
+    
+                    const dist = n.normalize().dot(scaledPoint).add(c);
+                    
                     return dist.lessThan(0.0);
 
                 });
@@ -416,7 +421,7 @@ export function initModelLayer(
                 //MIP accumulators
                 let accum = float(0.3).toVar();
                 let opacity = float(0.0).toVar();
-                RaymarchingBox(steps, ({ positionRay }) => {
+                RaymarchingBox(delta, steps, ({ positionRay }) => {
                     let transformedPos = positionRay;
                     transformedPos = transformedPos.add(0.5);
                     const mapValue = texture.sample(transformedPos).r.toVar();
@@ -545,16 +550,16 @@ export function initModelLayer(
 
             });
             
-            const stepSize = uniform(0.05);
+            const stepSize = uniform(0.01);
             const resSettings = {
-                stepSize: 0.05,
+                stepSize: 0.01,
                 resolution: 'Full'
             };
 
             const folder = gui.addFolder('Rendering Settings');
 
-            folder.add(resSettings, 'stepSize', 0.001, 0.2)
-                .step(0.001)
+            folder.add(resSettings, 'stepSize', 0.001, 0.05)
+                .step(0.0001)
                 .name('Step Size')
                 .onChange((val) => {
                     stepSize.value = val;
@@ -579,7 +584,8 @@ export function initModelLayer(
             folder.open();
             volumeMaterial.colorNode = opaqueRaymarchingTexture({
                 texture: texture3D(texture, null, 0),
-                steps: stepSize
+                delta: stepSize,
+                steps: 128
             });
             volumeMaterial.side = THREE.BackSide;
             //material.transparent = true;
@@ -898,7 +904,7 @@ export function initModelLayer(
         layerSize.width*0.11, layerSize.height*0.12,
         layerPosition,
         new THREE.Quaternion(),
-        window.innerWidth / 2 , window.innerHeight / 2,
+        window.innerWidth / 4, window.innerHeight / 4,
         () => {
             renderer.render(modelScene, modelCamera);
         }
@@ -1095,6 +1101,34 @@ function addPlaneGUIControl(plane, gui, camera, controls, name = 'Clipping Plane
             .add(offsetV);
 
         modelCamera.lookAt(lookTarget);
+
+        // 1. Нормализуем вектор нормали (обязательно!)
+        const normal = n.clone().normalize();
+
+        // 2. Создаем базис для плоскости (чтобы знать, где "право" и "верх")
+        // Нам нужны векторы U (sideways) и V (height) в плоскости
+        const up = new THREE.Vector3(0, 1, 0);
+        // Если нормаль смотрит строго вверх, используем (1,0,0)
+        if (Math.abs(normal.y) > 0.99) up.set(1, 0, 0);
+
+        const tangentU = new THREE.Vector3().crossVectors(normal, up).normalize();
+        const tangentV = new THREE.Vector3().crossVectors(normal, tangentU).normalize();
+
+        // 3. Точка на плоскости (центр клиппинга)
+        // params.constant — это расстояние вдоль нормали
+        const center = normal.clone().multiplyScalar(params.constant);
+
+        // 4. Позиция камеры = Центр + смещение по нормали (back) + смещения по базису
+        // params.offsetBack — это расстояние от плоскости до камеры
+        const camPos = center.clone()
+            .add(normal.multiplyScalar(params.offsetBack)) // дистанция от плейна
+            .add(tangentU.multiplyScalar(params.offsetU))  // сдвиг по X плоскости
+            .add(tangentV.multiplyScalar(params.offsetV)); // сдвиг по Y плоскости
+
+        modelCamera.position.copy(camPos);
+
+        // 5. LookAt — теперь всегда смотрит в центр, независимо от знака константы
+        modelCamera.lookAt(center.add(tangentU.multiplyScalar(params.offsetU)).add(tangentV.multiplyScalar(params.offsetV)));
     }    
     
   }
