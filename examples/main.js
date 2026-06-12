@@ -648,6 +648,14 @@ function render() {
     const currentPos = new THREE.Vector3();
     controller1.getWorldPosition(currentPos);
     const session = renderer.xr.getSession();
+    /*scene.updateMatrixWorld(true);                
+                    quad.getWorldPosition(point);
+                    quad.getWorldDirection(normal);
+                    normal.normalize();
+                    normal.negate();
+                    gRefferencePlane.setFromNormalAndCoplanarPoint(normal, point);
+                    gModelsFunction(heartUIState.cameraMutable);
+                    */
     if (session) {
         for (const source of session.inputSources) {
             const gp = source.gamepad;

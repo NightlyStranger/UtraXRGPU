@@ -4,7 +4,10 @@ import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { Break, If, texture3D, uniform, Fn, cameraProjectionMatrix, 
        modelViewMatrix,float, vec3, vec4,positionLocal, mul, cameraPosition, modelWorldMatrixInverse, Loop, max,
-       uniformArray, texture} from 'three/tsl';
+       uniformArray, texture,
+    smoothstep,
+    clamp
+} from 'three/tsl';
 import { RaymarchingBox } from 'three/addons/tsl/utils/Raymarching.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadFBX } from './fbxLoader.js';
@@ -117,8 +120,8 @@ export function initModelLayer(
     guiFolder.add(guiControls, 'enableNextLayer').name('Enable Next Layer');
     guiFolder.open();    
 
-    const renderingMode = uniform(2);
-    const threshold = uniform(0.4);
+    const renderingMode = uniform(0);
+    const threshold = uniform(0.0);
     addRenderingModeGUIControl(renderingMode, gui);
     addThresholdGUIControl(threshold, gui, "Iso Threshold", 0.0, 1.0, 0.01);
 
@@ -405,26 +408,59 @@ export function initModelLayer(
                     density.assign(1.0);
 
                     If(renderingMode.equal(0), () => {
-                        If(mapValue.greaterThan(threshold).and(clip.not()), () => {
-                            const p = vec3(positionRay).add(0.5);
-                            Loop( rangesSizeUniform, ( { i } ) => {
-                                const minVal = rangeMinsUniform.element(i);
-                                const maxVal = rangeMaxesUniform.element(i);
-                                If(mapValue.greaterThanEqual(minVal).and(mapValue.lessThan(maxVal)), () => {
-                                    finalColor.assign(colorsMappingUniform.element(i));
-                                    finalColor.a.assign(opacityMappingUniform.element(i));
-                                }); 
-                            } );
-                            
-                            Break();
-                        });
+                        Break();
+                        If(clip.not(), ()=> {
+                            const computeAlpha = Fn(({ x, a, b, c }) => {
+
+                                const left = smoothstep(
+                                    a.sub(b),
+                                    a,
+                                    x
+                                );
+                                const right = smoothstep(
+                                        a.add(b),
+                                        a,
+                                        x
+                                    );
+
+                                //if condition
+
+                                const alpha = left.mul(right).mul(c);
+
+                                return clamp(alpha, 0.0, 1.0);
+                            });
+
+                            const a = float( 0.27).toVar();
+                            const b = float( 0.03 ).toVar();
+                            const c = float( 0.05 ).toVar();
+                            const isoColor = vec3(1, 0, 1).toVar();
+                            const sampleAlpha = computeAlpha({
+                                x: mapValue, 
+                                a: a, 
+                                b: b, 
+                                c: c
+                            });
                         
+                            const oneMinusAlpha = one.sub(accumAlpha);
+                            accumColor.assign(accumColor.add(isoColor.mul(sampleAlpha).mul(oneMinusAlpha)));
+                            accumAlpha.assign(accumAlpha.add(sampleAlpha.mul(oneMinusAlpha)));
+                            If(accumAlpha.greaterThan(0.95), () => { Break(); });
+
+                        });                        
 
                     })
                     .ElseIf(renderingMode.equal(1), () => {
                         If(mapValue.lessThan(1.0).and(clip.not().and(mapValue.greaterThan(0.05))), () => {                        
                             const p = vec3(positionRay).add(0.5);
                             accum.assign(max(accum, mapValue));
+                        });
+                    })
+                    .ElseIf(renderingMode.equal(4), () => {
+                        If(mapValue.lessThan(1.0).and(clip.not().and(mapValue.greaterThan(0.05))), () => {                        
+                            const intColor = vec3(mapValue, mapValue, mapValue)
+                            accumColor.assign(intColor);
+                            accumAlpha.assign(1.0);
+                            Break();
                         });
                     })
                     .Else(() => {
@@ -487,7 +523,16 @@ export function initModelLayer(
                         }); 
                     } );
                 });
+                If((renderingMode.equal(0)), ()=> {
+                    finalColor.rgb.assign(accumColor);
+                    finalColor.a.assign(accumAlpha);
+                });
                 If((renderingMode.equal(2)), ()=> {
+                    finalColor.rgb.assign(accumColor);
+                    finalColor.a.assign(accumAlpha);
+                });
+
+                If((renderingMode.equal(4)), ()=> {
                     finalColor.rgb.assign(accumColor);
                     finalColor.a.assign(accumAlpha);
                 });
@@ -1064,8 +1109,14 @@ function addRenderingModeGUIControl(renderingMode, gui, name = 'Rendering Mode')
     };
 
     // Add a dropdown or slider with discrete options: 0 = Iso, 1 = MIP, 2 = DVR
-    folder.add(params, 'mode', { Iso: 0, MIP: 1, DVR: 2 }).name('Mode').onChange((val) => {
-        renderingMode.value = val; // update the uniform
+    folder.add(params, 'mode', { 
+        Iso: 0, 
+        Mip: 1, 
+        Dvr: 2, 
+        IsoDvr: 3, 
+        DirectIntensity: 4 
+    }).name('Mode').onChange((val) => {
+        renderingMode.value = val;
         console.log("Rendering Mode set to", val);
     });
 
