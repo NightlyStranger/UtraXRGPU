@@ -120,7 +120,7 @@ export function initModelLayer(
     guiFolder.add(guiControls, 'enableNextLayer').name('Enable Next Layer');
     guiFolder.open();    
 
-    const renderingMode = uniform(0);
+    const renderingMode = uniform(3);
     const threshold = uniform(0.0);
     addRenderingModeGUIControl(renderingMode, gui);
     addThresholdGUIControl(threshold, gui, "Iso Threshold", 0.0, 1.0, 0.01);
@@ -408,7 +408,6 @@ export function initModelLayer(
                     density.assign(1.0);
 
                     If(renderingMode.equal(0), () => {
-                        Break();
                         If(clip.not(), ()=> {
                             const computeAlpha = Fn(({ x, a, b, c }) => {
 
@@ -432,7 +431,7 @@ export function initModelLayer(
 
                             const a = float( 0.27).toVar();
                             const b = float( 0.03 ).toVar();
-                            const c = float( 0.05 ).toVar();
+                            const c = float( 0.5 ).toVar();
                             const isoColor = vec3(1, 0, 1).toVar();
                             const sampleAlpha = computeAlpha({
                                 x: mapValue, 
@@ -444,7 +443,9 @@ export function initModelLayer(
                             const oneMinusAlpha = one.sub(accumAlpha);
                             accumColor.assign(accumColor.add(isoColor.mul(sampleAlpha).mul(oneMinusAlpha)));
                             accumAlpha.assign(accumAlpha.add(sampleAlpha.mul(oneMinusAlpha)));
-                            If(accumAlpha.greaterThan(0.95), () => { Break(); });
+                            //const intColor = vec3(accumAlpha, accumAlpha, accumAlpha)
+                            //accumColor.assign(accumColor);
+                            //accumAlpha.assign(1.0);
 
                         });                        
 
@@ -453,6 +454,82 @@ export function initModelLayer(
                         If(mapValue.lessThan(1.0).and(clip.not().and(mapValue.greaterThan(0.05))), () => {                        
                             const p = vec3(positionRay).add(0.5);
                             accum.assign(max(accum, mapValue));
+                        });
+                    })
+                    .ElseIf(renderingMode.equal(3), () => {
+                        If(clip.not(), () => {
+                            let sampleColor = vec3(mapValue, 0, 0).toVar();
+                            let sampleAlpha = mapValue.toVar();
+                            
+                            Loop({ start: 1, end: rangesSizeUniform }, ({ i }) => {
+                                const minVal = rangeMinsUniform.element(i);
+                                const maxVal = rangeMaxesUniform.element(i);
+
+                                If(mapValue.greaterThanEqual(minVal).and(mapValue.lessThan(maxVal)),
+                                    () => {
+                                        const t = mapValue
+                                            .sub(minVal)
+                                            .div(maxVal.sub(minVal))
+                                            .clamp(0.0, 1.0);
+                                            
+                                        const c0 = colorsMappingUniform.element(i.sub(1));
+                                        const c1 = colorsMappingUniform.element(i);
+
+                                        const a0 = opacityMappingUniform.element(i.sub(1));
+                                        const a1 = opacityMappingUniform.element(i);
+                                        sampleColor.assign(
+                                            c0.mul(float(1.0).sub(t)).add(c1.mul(t))
+                                        );
+
+                                        sampleAlpha.assign(
+                                            a0.mul(float(1.0).sub(t)).add(a1.mul(t))
+                                        );
+                                    }
+                                );
+
+                                If(mapValue.lessThan(threshold), () => {
+                                    sampleAlpha.assign(0.0);
+                                });
+                            });
+                             
+                            const oneMinusAlpha = one.sub(accumAlpha);
+                            accumColor.assign(accumColor.add(sampleColor.mul(sampleAlpha).mul(oneMinusAlpha)));
+                            accumAlpha.assign(accumAlpha.add(sampleAlpha.mul(oneMinusAlpha)));
+                            const computeAlpha = Fn(({ x, a, b, c }) => {
+
+                                const left = smoothstep(
+                                    a.sub(b),
+                                    a,
+                                    x
+                                );
+                                const right = smoothstep(
+                                        a.add(b),
+                                        a,
+                                        x
+                                    );
+
+                                //if condition
+
+                                const alpha = left.mul(right).mul(c);
+
+                                return clamp(alpha, 0.0, 1.0);
+                            });
+
+                            const a = float( 0.27).toVar();
+                            const b = float( 0.03 ).toVar();
+                            const c = float( 0.5 ).toVar();
+                            const isoColor = vec3(1, 0, 1).toVar();
+                            const isoAlpha = computeAlpha({
+                                x: mapValue, 
+                                a: a, 
+                                b: b, 
+                                c: c
+                            });
+                
+                            accumColor.assign(accumColor.add(isoColor.mul(isoAlpha).mul(one.sub(accumAlpha))));
+                            accumAlpha.assign(accumAlpha.add(isoAlpha.mul(one.sub(accumAlpha))));
+                            // early exit if almost opaque
+                            If(accumAlpha.greaterThan(0.95), () => { Break(); });
                         });
                     })
                     .ElseIf(renderingMode.equal(4), () => {
@@ -532,6 +609,11 @@ export function initModelLayer(
                     finalColor.a.assign(accumAlpha);
                 });
 
+                If((renderingMode.equal(3)), ()=> {
+                    finalColor.rgb.assign(accumColor);
+                    finalColor.a.assign(accumAlpha);
+                });
+
                 If((renderingMode.equal(4)), ()=> {
                     finalColor.rgb.assign(accumColor);
                     finalColor.a.assign(accumAlpha);
@@ -544,7 +626,7 @@ export function initModelLayer(
             
             volumeMaterial.colorNode = opaqueRaymarchingTexture({
                 texture: texture3D(texture, null, 0),
-                steps: 64
+                steps: 1024
             });
             volumeMaterial.side = THREE.BackSide;
             volumeMaterial.transparent = true;
@@ -569,21 +651,17 @@ export function initModelLayer(
 
             
             updatePlaneForMesh(mesh, worldPlane, planeNormal, planeConstant);
-
-            // ---------- Create SECOND mesh (volumeObserver) ----------
             const volumeObserver = new THREE.Mesh(
-                new THREE.BoxGeometry(1, 1, 1),                 // shared geometry (OK)
-                volumeMaterial    // CLONED material (important)
+                new THREE.BoxGeometry(1, 1, 1),
+                volumeMaterial
             );
 
-            // copy full transform state
             volumeObserver.position.copy(mesh.position);
             volumeObserver.quaternion.copy(mesh.quaternion);
             volumeObserver.scale.copy(mesh.scale);
             volumeObserver.matrix.copy(mesh.matrix);
             volumeObserver.matrixWorld.copy(mesh.matrixWorld);
 
-            // ensure independent updates
             volumeObserver.matrixAutoUpdate = false;
             volumeObserver.updateMatrixWorld(true);
             render();
@@ -594,7 +672,6 @@ export function initModelLayer(
 
             return mesh;
         }
-        // Usage:
         async function loadAllModels() {
             const modelPromises = [];
             for (let i = 1; i <= 4; i++) {
@@ -752,6 +829,14 @@ export function initModelLayer(
         // play button
         gui.add(animParams, 'play').name('Play');
 
+        const meshParams = {
+            showAtrialMesh: true
+        };
+
+        const meshFolder = gui.addFolder('Anatomical Models');
+        meshFolder.add(meshParams, 'showAtrialMesh').name('Show Atrial Mesh');
+        meshFolder.open();
+
         let frameCounter = 0;
         const MAX_FRAMES = 48;
         animParams.frame = 0;
@@ -762,7 +847,9 @@ export function initModelLayer(
             if (models) {
                 models.forEach((model, i) => {
                     model.visible = (i === currentFrame);
-                    copyModel.visible = true;
+                    model.visible = meshParams.showAtrialMesh;
+                    copyModel.visible = meshParams.showAtrialMesh;
+                    console.log(meshParams.showAtrialMesh);
                     if(copyModel) {
                         invCube1Matrix.copy(copyModel.matrixWorld).invert();
                         worldPlane.copy(refferencePlane);
@@ -860,7 +947,7 @@ export function initModelLayer(
         layerSize.width*0.11, layerSize.height*0.12,
         layerPosition,
         new THREE.Quaternion(),
-        window.innerWidth / 4, window.innerHeight / 4,
+        window.innerWidth, window.innerHeight,
         () => renderer.render(modelScene, modelCamera)
     );
     modelLayer.position.set(-0.43, 1.36, -0.65);
