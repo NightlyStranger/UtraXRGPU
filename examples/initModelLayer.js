@@ -99,19 +99,15 @@ export function initModelLayer(
 
     camFolder.open();
 
-    // GUI folder
     const guiFolder = gui.addFolder('Extra Layers');
 
-    // Button object
     const guiControls = {
         enableNextLayer: () => {
             if (nextLayerIndex >= renderOffscreenLayers.length) {
-                console.log('All layers already enabled');
                 return;
             }
 
             renderOffscreenLayers[nextLayerIndex] = true;
-            console.log(`Layer ${nextLayerIndex + 1} enabled`);
             nextLayerIndex++;
         }
     };
@@ -276,36 +272,17 @@ export function initModelLayer(
                     rowMajor[2], rowMajor[6], rowMajor[10], rowMajor[14],
                     rowMajor[3], rowMajor[7], rowMajor[11], rowMajor[15]
                 );
-                // Extract rotation only
                 const quat = new THREE.Quaternion();
                 m.extractRotation(m);
                 quat.setFromRotationMatrix(m);
-                console.log("Rotation", quat);
-
-                // Apply rotation
-                //model.scale.set(0.02, 0.02, 0.02);
-
-                //model.applyMatrix4(m);
-
-                // ------------------------------
-                // 3) Additional matrix (M2)
-                // ------------------------------
                 const M2 = new THREE.Matrix4();
 
-                // Example rotation (change this to whatever you need)
                 M2.makeRotationX(THREE.MathUtils.degToRad(90));
 
-
-                // ------------------------------
-                // 4) Apply matrices one by one
-                // ------------------------------
                 model.scale.set(0.02, 0.02, 0.02);
 
-                model.applyMatrix4(m);   // first transformation
-                model.applyMatrix4(M2);  // second transformation
-
-
-
+                model.applyMatrix4(m);
+                model.applyMatrix4(M2);
                 const cherryMaterial = new THREE.MeshPhysicalMaterial({
                     color: new THREE.Color(0xff0055),
                     metalness: 0.5,
@@ -335,7 +312,6 @@ export function initModelLayer(
                 }
                 });
                 wMatrix1 = model.matrixWorld;
-                console.log(wMatrix1);
 
                 resolve(model);
             },
@@ -377,7 +353,6 @@ export function initModelLayer(
             const volumeMaterial = new THREE.NodeMaterial();
             
             const opaqueRaymarchingTexture = Fn(({ texture, steps}) => {
-                //Add in g channel second texture
                 let finalColor = vec4().toVar();
                 finalColor.a.assign(0);
                 
@@ -421,9 +396,6 @@ export function initModelLayer(
                                         a,
                                         x
                                     );
-
-                                //if condition
-
                                 const alpha = left.mul(right).mul(c);
 
                                 return clamp(alpha, 0.0, 1.0);
@@ -443,10 +415,6 @@ export function initModelLayer(
                             const oneMinusAlpha = one.sub(accumAlpha);
                             accumColor.assign(accumColor.add(isoColor.mul(sampleAlpha).mul(oneMinusAlpha)));
                             accumAlpha.assign(accumAlpha.add(sampleAlpha.mul(oneMinusAlpha)));
-                            //const intColor = vec3(accumAlpha, accumAlpha, accumAlpha)
-                            //accumColor.assign(accumColor);
-                            //accumAlpha.assign(1.0);
-
                         });                        
 
                     })
@@ -690,8 +658,6 @@ export function initModelLayer(
             models = loadedModels;
             let handled = false;
             models.forEach(model => {
-                console.log("debug", handled);
-                //if (handled) return;
                 handled = true;
                 model.visible = false;
                 knotClippingGroup.add(model);
@@ -781,19 +747,16 @@ export function initModelLayer(
             }
 
         });
-        // In your render/animation loop
         async function loadAllVolumes() {
             const volumePromises = [];
 
             for (let i = 1; i <= 4; i++) {
                 const volumePath = `volumes/Frame${String(i).padStart(2,'0')}/Volume.downsampled.raw`;
-                console.log(volumePath);
                 volumePromises.push(loadVolume(volumePath));
             }
 
             const volumes = await Promise.all(volumePromises);
 
-            // Add all volumes to the scene but hide them initially
             volumes.forEach(volume => {
                 volume.visible = false;
                 modelScene.add(volume);
@@ -849,7 +812,6 @@ export function initModelLayer(
                     model.visible = (i === currentFrame);
                     model.visible = meshParams.showAtrialMesh;
                     copyModel.visible = meshParams.showAtrialMesh;
-                    console.log(meshParams.showAtrialMesh);
                     if(copyModel) {
                         invCube1Matrix.copy(copyModel.matrixWorld).invert();
                         worldPlane.copy(refferencePlane);
@@ -1073,7 +1035,6 @@ export function initModelLayer(
 
 function addPlaneGUIControl(plane, gui, camera, controls, name = 'Clipping Plane', planeNormal, planeConstant) {
   const folder = gui.addFolder(name);
-  console.log("here!!!!!!!!!!!!!!!!!");
 
 
   const params = {
@@ -1115,28 +1076,17 @@ function addPlaneGUIControl(plane, gui, camera, controls, name = 'Clipping Plane
         plane.constant = params.constant;
         planeConstant.value = params.constant;
         updatePlaneForMesh(globalVolumeMesh, worldPlane, planeNormal, planeConstant);
-        console.log("here");
-        // ========== CAMERA POSITIONING ==========
-
-        // point on the plane in world coordinates
         const planePoint = n.clone().multiplyScalar(params.constant);
 
-        // backwards offset (opposite of normal)
         const back = n.clone().multiplyScalar(params.offsetBack);
-
-        // 3. Offsets in world X and Y
-        const offsetU = new THREE.Vector3(params.offsetU, 0, 0); // sideways
-        const offsetV = new THREE.Vector3(0, params.offsetV, 0); // height
-
-        // 4. New camera position
+        const offsetU = new THREE.Vector3(params.offsetU, 0, 0);
+        const offsetV = new THREE.Vector3(0, params.offsetV, 0);
         const newCamPos = planePoint.clone()
             .add(back)
             .add(offsetU)
             .add(offsetV);
 
         modelCamera.position.copy(newCamPos);
-
-        // 5. LookAt target shifted by same offsets
         const lookTarget = planePoint.clone()
             .add(offsetU)
             .add(offsetV);
@@ -1162,7 +1112,6 @@ function addPlaneGUIControl(plane, gui, camera, controls, name = 'Clipping Plane
     };
 
     gui.add(params2, 'enableOrbit').name('Enable Orbit').onChange((value) => {
-        //controls.enabled = value;
     });
 
   return folder;
@@ -1204,7 +1153,6 @@ function addRenderingModeGUIControl(renderingMode, gui, name = 'Rendering Mode')
         DirectIntensity: 4 
     }).name('Mode').onChange((val) => {
         renderingMode.value = val;
-        console.log("Rendering Mode set to", val);
     });
 
     folder.open();
@@ -1217,8 +1165,7 @@ function addThresholdGUIControl(thresholdUniform, gui, name = 'Threshold', min =
     };
 
     folder.add(params, 'threshold', min, max, step).name('Threshold').onChange((val) => {
-        thresholdUniform.value = val; // update the uniform
-        console.log("Threshold set to", val);
+        thresholdUniform.value = val;
     });
 
     folder.open();
