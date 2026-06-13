@@ -626,7 +626,7 @@ export function initModelLayer(
             
             volumeMaterial.colorNode = opaqueRaymarchingTexture({
                 texture: texture3D(texture, null, 0),
-                steps: 1024
+                steps: 521
             });
             volumeMaterial.side = THREE.BackSide;
             volumeMaterial.transparent = true;
